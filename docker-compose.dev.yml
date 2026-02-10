@@ -1,0 +1,184 @@
+version: '3.8'
+
+# ===========================================
+# Clenzy - Docker Compose DÉVELOPPEMENT
+# ===========================================
+# Usage: docker compose -f docker-compose.dev.yml --env-file .env.dev up --build
+#
+# Architecture:
+#   - Landing Page   → http://localhost:8080
+#   - PMS Frontend   → http://localhost:3000
+#   - PMS API        → http://localhost:8084
+#   - Keycloak       → http://localhost:8086
+#   - PostgreSQL     → localhost:5433
+#   - Redis          → localhost:6379
+
+services:
+
+  # ==========================================
+  # LANDING PAGE (site vitrine)
+  # ==========================================
+  landing:
+    build:
+      context: ../clenzy-landingpage
+      dockerfile: Dockerfile
+      args:
+        VITE_APP_URL: ${VITE_APP_URL:-http://localhost:3000}
+    container_name: clenzy-landing-dev
+    ports:
+      - "8080:80"
+    networks:
+      clenzy-network:
+        aliases:
+          - clenzy-landing
+
+  # ==========================================
+  # INFRASTRUCTURE (BDD, Cache, Auth)
+  # ==========================================
+
+  # Base de données PostgreSQL
+  postgres:
+    image: postgres:15-alpine
+    container_name: clenzy-postgres-dev
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-clenzy_dev}
+      POSTGRES_USER: ${POSTGRES_USER:-clenzy}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-CHANGE_ME_dev_password}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-data-dev:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-clenzy} -d ${POSTGRES_DB:-clenzy_dev}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      clenzy-network:
+        aliases:
+          - postgres
+
+  # Cache Redis
+  redis:
+    image: redis:7-alpine
+    container_name: clenzy-redis-dev
+    hostname: clenzy-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data-dev:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      clenzy-network:
+        aliases:
+          - clenzy-redis
+
+  # Serveur Keycloak (Identity Provider)
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0.5
+    container_name: clenzy-keycloak-dev
+    hostname: clenzy-keycloak
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak_dev
+      KC_DB_USERNAME: ${POSTGRES_USER:-clenzy}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-CHANGE_ME_dev_password}
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT_BACKCHANNEL: "false"
+      KC_PROXY: edge
+      KC_PROXY_ADDRESS_FORWARDING: "true"
+    ports:
+      - "8086:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ../clenzy/infrastructure/keycloak/realm-clenzy.json:/opt/keycloak/data/import/realm-clenzy.json
+    command: start-dev --import-realm
+    networks:
+      clenzy-network:
+        aliases:
+          - clenzy-keycloak
+
+  # ==========================================
+  # PMS (Application métier)
+  # ==========================================
+
+  # Backend Spring Boot
+  pms-server:
+    build:
+      context: ../clenzy/server
+      dockerfile: Dockerfile
+    container_name: clenzy-server-dev
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-clenzy_dev}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-clenzy}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-CHANGE_ME_dev_password}
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://clenzy-keycloak:8080/realms/clenzy
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://clenzy-keycloak:8080/realms/clenzy/protocol/openid-connect/certs
+      KEYCLOAK_TOKEN_URI: http://clenzy-keycloak:8080/realms/clenzy/protocol/openid-connect/token
+      KEYCLOAK_LOGOUT_URI: http://clenzy-keycloak:8080/realms/clenzy/protocol/openid-connect/logout
+      KEYCLOAK_CLIENT_ID: clenzy-web
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-clenzy-secret}
+      KEYCLOAK_AUTH_SERVER_URL: http://clenzy-keycloak:8080
+      KEYCLOAK_REALM: clenzy
+      KEYCLOAK_MASTER_REALM: master
+      KEYCLOAK_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KEYCLOAK_ADMIN_CLIENT_ID: admin-cli
+      KEYCLOAK_ADMIN_REALM: clenzy
+      SPRING_REDIS_HOST: clenzy-redis
+      SPRING_REDIS_PORT: 6379
+      SPRING_REDIS_PASSWORD: ""
+      SPRING_REDIS_DATABASE: 0
+    ports:
+      - "8084:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    networks:
+      clenzy-network:
+        aliases:
+          - clenzy-server
+
+  # Frontend React (PMS)
+  pms-client:
+    build:
+      context: ../clenzy/client
+      dockerfile: Dockerfile
+    container_name: clenzy-frontend-dev
+    ports:
+      - "3000:80"
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+    networks:
+      clenzy-network:
+        aliases:
+          - clenzy-frontend
+
+volumes:
+  postgres-data-dev:
+  redis-data-dev:
+
+networks:
+  clenzy-network:
+    driver: bridge
+    name: clenzy-network

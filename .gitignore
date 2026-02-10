@@ -1,0 +1,23 @@
+# Environnement
+.env
+!.env.example
+!.env.dev
+
+# SSL certificates
+nginx/ssl/*.crt
+nginx/ssl/*.key
+nginx/ssl/*.pem
+
+# Docker volumes data
+postgres-data-*/
+redis-data-*/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
