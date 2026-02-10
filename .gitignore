@@ -3,10 +3,12 @@
 !.env.example
 !.env.dev
 
-# SSL certificates
-nginx/ssl/*.crt
-nginx/ssl/*.key
-nginx/ssl/*.pem
+# SSL certificates (production)
+# Les certificats auto-signés de dev sont versionnés
+# En prod, remplacer par de vrais certificats (Let's Encrypt, etc.)
+# nginx/ssl/*.crt
+# nginx/ssl/*.key
+# nginx/ssl/*.pem
 
 # Docker volumes data
 postgres-data-*/
