@@ -119,7 +119,7 @@ services:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak_prod
       KC_DB_USERNAME: ${POSTGRES_USER}
-      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
       KC_HOSTNAME: ${AUTH_DOMAIN}
       KC_HTTP_ENABLED: "true"
       KC_PROXY: edge
@@ -131,7 +131,7 @@ services:
       - ../clenzy/infrastructure/keycloak/realm-clenzy.json:/opt/keycloak/data/import/realm-clenzy.json
     expose:
       - "8080"
-    command: start --import-realm --optimized
+    command: start --import-realm
     networks:
       clenzy-network:
         aliases:
@@ -150,6 +150,16 @@ services:
     restart: unless-stopped
     environment:
       SPRING_PROFILES_ACTIVE: prod
+      SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      STRIPE_SECRET_KEY: sk_test_placeholder
+      STRIPE_PUBLISHABLE_KEY: pk_test_placeholder
+      STRIPE_WEBHOOK_SECRET: whsec_placeholder
+      FRONTEND_URL: https://app.clenzy.fr
+      STRIPE_CURRENCY: eur
+      STRIPE_SUCCESS_URL: https://app.clenzy.fr/interventions/payment/success?session_id={CHECKOUT_SESSION_ID}
+      STRIPE_CANCEL_URL: https://app.clenzy.fr/interventions/payment/cancel
+      ALLOWED_ORIGINS: https://clenzy.fr,https://app.clenzy.fr
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
