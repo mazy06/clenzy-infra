@@ -25,9 +25,9 @@ fi
 source .env
 
 # Domaines a certifier
-DOMAINS="${DOMAIN:-clenzy.com}"
-APP_DOM="${APP_DOMAIN:-app.clenzy.com}"
-AUTH_DOM="${AUTH_DOMAIN:-auth.clenzy.com}"
+DOMAINS="${DOMAIN:-clenzy.fr}"
+APP_DOM="${APP_DOMAIN:-app.clenzy.fr}"
+AUTH_DOM="${AUTH_DOMAIN:-auth.clenzy.fr}"
 
 # Email pour les notifications Let's Encrypt (expiration, etc.)
 EMAIL="${LETSENCRYPT_EMAIL:-admin@${DOMAINS}}"

@@ -30,11 +30,11 @@ if [ ! -f ".env" ]; then
 fi
 
 # Vérification des certificats SSL
-if [ ! -f "nginx/ssl/clenzy.com.crt" ] || [ ! -f "nginx/ssl/clenzy.com.key" ]; then
+if [ ! -f "nginx/ssl/clenzy.fr.crt" ] || [ ! -f "nginx/ssl/clenzy.fr.key" ]; then
     echo "⚠️  Certificats SSL introuvables dans nginx/ssl/"
     echo "   Placez vos certificats :"
-    echo "   - nginx/ssl/clenzy.com.crt"
-    echo "   - nginx/ssl/clenzy.com.key"
+    echo "   - nginx/ssl/clenzy.fr.crt"
+    echo "   - nginx/ssl/clenzy.fr.key"
     echo ""
     read -p "Continuer sans SSL ? (y/N) " -n 1 -r
     echo
@@ -67,10 +67,10 @@ echo ""
 echo "✅ Clenzy démarré en production !"
 echo ""
 echo "📊 Services :"
-echo "   - Landing   : https://clenzy.com"
-echo "   - PMS       : https://app.clenzy.com"
-echo "   - API       : https://app.clenzy.com/api"
-echo "   - Auth      : https://auth.clenzy.com"
+echo "   - Landing   : https://clenzy.fr"
+echo "   - PMS       : https://app.clenzy.fr"
+echo "   - API       : https://app.clenzy.fr/api"
+echo "   - Auth      : https://auth.clenzy.fr"
 echo ""
 echo "📋 Commandes utiles :"
 echo "   - Logs      : docker compose -f docker-compose.prod.yml logs -f"

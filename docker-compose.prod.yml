@@ -6,10 +6,10 @@ version: '3.8'
 # Usage: docker compose -f docker-compose.prod.yml --env-file .env up -d
 #
 # Architecture avec reverse proxy Nginx :
-#   - clenzy.com        → Landing Page
-#   - app.clenzy.com    → PMS Frontend
-#   - app.clenzy.com/api → PMS Backend (Spring Boot)
-#   - auth.clenzy.com   → Keycloak
+#   - clenzy.fr         → Landing Page
+#   - app.clenzy.fr     → PMS Frontend
+#   - app.clenzy.fr/api → PMS Backend (Spring Boot)
+#   - auth.clenzy.fr    → Keycloak
 
 services:
 
@@ -58,7 +58,7 @@ services:
       context: ../clenzy-landingpage
       dockerfile: Dockerfile
       args:
-        VITE_APP_URL: https://${APP_DOMAIN:-app.clenzy.com}
+        VITE_APP_URL: https://${APP_DOMAIN:-app.clenzy.fr}
     container_name: clenzy-landing-prod
     restart: unless-stopped
     expose:
