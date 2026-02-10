@@ -177,7 +177,7 @@ docker exec -it clenzy-redis-dev redis-cli INFO memory
 ```bash
 # Acceder a la console admin
 # URL : http://localhost:8086
-# Login : admin / admin
+# Identifiants : voir .env.dev (KEYCLOAK_ADMIN / KEYCLOAK_ADMIN_PASSWORD)
 
 # Voir les logs de demarrage
 docker compose -f docker-compose.dev.yml --env-file .env.dev logs keycloak
@@ -239,15 +239,17 @@ docker exec -it clenzy-landing-dev sh
 ```
 clenzy-infra/
 ├── docker-compose.dev.yml       # Orchestration dev (6 services, ports exposes)
-├── docker-compose.prod.yml      # Orchestration prod (7 services + Nginx reverse proxy)
+├── docker-compose.prod.yml      # Orchestration prod (8 services + Nginx + Certbot)
 ├── nginx/
 │   ├── nginx.conf               # Config reverse proxy prod (routing par sous-domaine)
-│   └── ssl/                     # Certificats SSL (clenzy.com.crt + clenzy.com.key)
-│       └── .gitkeep
+│   └── ssl/                     # Certificats SSL auto-signes (dev)
+│       ├── clenzy.com.crt
+│       └── clenzy.com.key
 ├── init-scripts/
 │   └── 01-init-databases.sql    # Creation auto des bases (clenzy_dev + keycloak_dev)
-├── .env.dev                     # Variables d'env dev (pret a l'emploi)
+├── .env.dev                     # Variables d'env + identifiants dev (pret a l'emploi)
 ├── .env.example                 # Template variables d'env prod (a copier en .env)
+├── init-letsencrypt.sh          # Script premiere installation Let's Encrypt
 ├── start-dev.sh                 # Script demarrage dev
 ├── start-prod.sh                # Script demarrage prod
 ├── stop.sh                      # Script d'arret (dev ou prod)
@@ -263,11 +265,11 @@ Le fichier `.env.dev` est fourni pret a l'emploi avec des valeurs par defaut. Au
 
 **Identifiants par defaut :**
 
-| Service    | Utilisateur | Mot de passe |
-|------------|-------------|--------------|
-| PostgreSQL | clenzy      | clenzy123    |
-| Keycloak   | admin       | admin        |
-| PMS        | admin@clenzy.fr | admin    |
+Tous les identifiants de developpement (PostgreSQL, Keycloak, PMS) sont centralises dans le fichier `.env.dev`. Consultez ce fichier pour obtenir les utilisateurs et mots de passe :
+
+```bash
+cat .env.dev
+```
 
 ### Environnement de production
 
@@ -278,9 +280,8 @@ cp .env.example .env
 # 2. Editer et renseigner les valeurs de production
 nano .env
 
-# 3. Placer les certificats SSL
-cp votre-certificat.crt nginx/ssl/clenzy.com.crt
-cp votre-cle-privee.key nginx/ssl/clenzy.com.key
+# 3. Generer les certificats SSL (voir section SSL ci-dessous)
+./init-letsencrypt.sh
 
 # 4. Lancer
 ./start-prod.sh
@@ -298,6 +299,63 @@ cp votre-cle-privee.key nginx/ssl/clenzy.com.key
 | `DOMAIN`               | Domaine principal (ex: clenzy.com)       |
 | `APP_DOMAIN`           | Sous-domaine PMS (ex: app.clenzy.com)    |
 | `AUTH_DOMAIN`          | Sous-domaine auth (ex: auth.clenzy.com)  |
+
+## SSL / Let's Encrypt
+
+### Certificats auto-signes (dev)
+
+Les certificats auto-signes dans `nginx/ssl/` sont utilises pour le developpement local uniquement. Les navigateurs afficheront un avertissement de securite — c'est normal.
+
+### Certificats Let's Encrypt (prod)
+
+En production, le projet utilise **Certbot** pour generer des certificats SSL gratuits et reconnus par tous les navigateurs via [Let's Encrypt](https://letsencrypt.org/).
+
+**Prerequis :**
+- Un serveur avec une IP publique
+- Les enregistrements DNS (A records) pointant vers cette IP pour les 3 domaines :
+  - `clenzy.com` + `www.clenzy.com`
+  - `app.clenzy.com`
+  - `auth.clenzy.com`
+- Le port 80 ouvert et accessible depuis Internet
+
+**Premiere installation :**
+
+```bash
+# 1. Configurer le fichier .env avec les domaines et l'email
+cp .env.example .env
+nano .env
+# Renseigner DOMAIN, APP_DOMAIN, AUTH_DOMAIN, LETSENCRYPT_EMAIL
+
+# 2. Lancer le script d'initialisation
+./init-letsencrypt.sh
+```
+
+Le script effectue automatiquement :
+1. Cree un certificat temporaire pour permettre a Nginx de demarrer
+2. Demarre Nginx en mode HTTP (port 80)
+3. Lance le challenge ACME Let's Encrypt (verification de propriete du domaine)
+4. Installe les vrais certificats et recharge Nginx
+
+**Renouvellement automatique :**
+
+Le service `certbot` dans le docker-compose prod tourne en continu et tente un renouvellement toutes les 12 heures. Les certificats Let's Encrypt expirent apres 90 jours mais sont renouveles automatiquement bien avant.
+
+Pour forcer un renouvellement manuel :
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env run --rm certbot \
+  certbot renew --webroot -w /var/www/certbot --force-renewal
+
+# Recharger Nginx apres renouvellement
+docker compose -f docker-compose.prod.yml --env-file .env exec nginx nginx -s reload
+```
+
+**Verifier l'etat des certificats :**
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env run --rm certbot \
+  certbot certificates
+```
 
 ## Reseau Docker
 

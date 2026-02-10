@@ -26,11 +26,27 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/ssl:/etc/nginx/ssl:ro
+      - certbot-webroot:/var/www/certbot:ro
+      - certbot-certs:/etc/letsencrypt:ro
     depends_on:
       - landing
       - pms-client
       - pms-server
       - keycloak
+    networks:
+      - clenzy-network
+
+  # ==========================================
+  # CERTBOT (Let's Encrypt SSL)
+  # ==========================================
+  certbot:
+    image: certbot/certbot:latest
+    container_name: clenzy-certbot
+    volumes:
+      - certbot-webroot:/var/www/certbot
+      - certbot-certs:/etc/letsencrypt
+    # Renouvellement automatique toutes les 12h
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done;'"
     networks:
       - clenzy-network
 
@@ -179,6 +195,8 @@ services:
 volumes:
   postgres-data-prod:
   redis-data-prod:
+  certbot-webroot:
+  certbot-certs:
 
 networks:
   clenzy-network:
