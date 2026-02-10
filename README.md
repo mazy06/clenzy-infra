@@ -12,7 +12,7 @@ Orchestration Docker de la plateforme Clenzy : site vitrine (landing page) + PMS
                           │       │        │
              ┌────────────┘       │        └────────────┐
              ▼                    ▼                     ▼
-    clenzy.com           app.clenzy.com          auth.clenzy.com
+    clenzy.fr            app.clenzy.fr           auth.clenzy.fr
     ┌───────────┐        ┌─────────────┐         ┌────────────┐
     │  Landing  │        │ PMS Client  │         │  Keycloak  │
     │  (Nginx)  │        │   (Nginx)   │         │            │
@@ -74,10 +74,10 @@ docker compose -f docker-compose.dev.yml --env-file .env.dev up --build
 
 | Service        | URL                          |
 |----------------|------------------------------|
-| Landing Page   | https://clenzy.com           |
-| PMS Frontend   | https://app.clenzy.com       |
-| PMS API        | https://app.clenzy.com/api   |
-| Keycloak       | https://auth.clenzy.com      |
+| Landing Page   | https://clenzy.fr            |
+| PMS Frontend   | https://app.clenzy.fr        |
+| PMS API        | https://app.clenzy.fr/api    |
+| Keycloak       | https://auth.clenzy.fr       |
 
 ## Commandes utiles
 
@@ -243,8 +243,8 @@ clenzy-infra/
 ├── nginx/
 │   ├── nginx.conf               # Config reverse proxy prod (routing par sous-domaine)
 │   └── ssl/                     # Certificats SSL auto-signes (dev)
-│       ├── clenzy.com.crt
-│       └── clenzy.com.key
+│       ├── clenzy.fr.crt
+│       └── clenzy.fr.key
 ├── init-scripts/
 │   └── 01-init-databases.sql    # Creation auto des bases (clenzy_dev + keycloak_dev)
 ├── .env.dev                     # Variables d'env + identifiants dev (pret a l'emploi)
@@ -296,9 +296,9 @@ nano .env
 | `KEYCLOAK_DB_PASSWORD` | Mot de passe BDD Keycloak                |
 | `KEYCLOAK_CLIENT_SECRET` | Secret client OAuth2                   |
 | `JWT_SECRET`           | Secret JWT (256 bits minimum)            |
-| `DOMAIN`               | Domaine principal (ex: clenzy.com)       |
-| `APP_DOMAIN`           | Sous-domaine PMS (ex: app.clenzy.com)    |
-| `AUTH_DOMAIN`          | Sous-domaine auth (ex: auth.clenzy.com)  |
+| `DOMAIN`               | Domaine principal (ex: clenzy.fr)        |
+| `APP_DOMAIN`           | Sous-domaine PMS (ex: app.clenzy.fr)     |
+| `AUTH_DOMAIN`          | Sous-domaine auth (ex: auth.clenzy.fr)   |
 
 ## SSL / Let's Encrypt
 
@@ -313,9 +313,9 @@ En production, le projet utilise **Certbot** pour generer des certificats SSL gr
 **Prerequis :**
 - Un serveur avec une IP publique
 - Les enregistrements DNS (A records) pointant vers cette IP pour les 3 domaines :
-  - `clenzy.com` + `www.clenzy.com`
-  - `app.clenzy.com`
-  - `auth.clenzy.com`
+  - `clenzy.fr` + `www.clenzy.fr`
+  - `app.clenzy.fr`
+  - `auth.clenzy.fr`
 - Le port 80 ouvert et accessible depuis Internet
 
 **Premiere installation :**
