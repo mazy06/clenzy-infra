@@ -1,0 +1,143 @@
+# ===========================================
+# Clenzy — CD Deploy (Déploiement complet VPS)
+# ===========================================
+# Workflow pour déployer l'ensemble de l'infrastructure sur le VPS OVH.
+# Peut être déclenché :
+#   - Manuellement via workflow_dispatch
+#   - Automatiquement quand l'infra (nginx, monitoring, etc.) est modifiée
+
+name: CD Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docker-compose.prod.yml'
+      - 'nginx/**'
+      - 'monitoring/**'
+      - 'keycloak/**'
+      - '.github/workflows/cd-deploy.yml'
+  workflow_dispatch:
+    inputs:
+      deploy_mode:
+        description: 'Mode de déploiement'
+        required: true
+        default: 'update'
+        type: choice
+        options:
+          - update
+          - full-rebuild
+      services:
+        description: 'Services à déployer (vide = tous)'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy Infrastructure
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout infrastructure
+        uses: actions/checkout@v4
+
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script_stop: true
+          script: |
+            set -e
+            echo "=========================================="
+            echo "🚀 Clenzy — Deploiement Infrastructure"
+            echo "=========================================="
+            echo ""
+
+            INFRA_DIR="/opt/clenzy-infra"
+            cd "$INFRA_DIR"
+
+            # --- Authentification GHCR ---
+            echo "🔐 Connexion au GitHub Container Registry..."
+            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ github.repository_owner }} --password-stdin
+
+            # --- Mise à jour du repo infra ---
+            echo "📥 Mise à jour du repo infrastructure..."
+            git fetch origin main
+            git reset --hard origin/main
+
+            # --- Backup avant déploiement ---
+            echo "💾 Backup pré-déploiement..."
+            if [ -f "./backup/backup.sh" ]; then
+              bash ./backup/backup.sh --env prod --db-only 2>/dev/null || echo "⚠️  Backup ignoré (base non disponible)"
+            fi
+
+            DEPLOY_MODE="${{ github.event.inputs.deploy_mode || 'update' }}"
+            SERVICES="${{ github.event.inputs.services }}"
+
+            if [ "$DEPLOY_MODE" = "full-rebuild" ]; then
+              echo "🔄 Rebuild complet de tous les services..."
+              docker compose -f docker-compose.prod.yml --env-file .env pull
+              docker compose -f docker-compose.prod.yml --env-file .env up -d --force-recreate
+            else
+              if [ -n "$SERVICES" ]; then
+                echo "📦 Mise à jour des services : $SERVICES"
+                docker compose -f docker-compose.prod.yml --env-file .env pull $SERVICES
+                docker compose -f docker-compose.prod.yml --env-file .env up -d $SERVICES
+              else
+                echo "📦 Mise à jour de tous les services..."
+                docker compose -f docker-compose.prod.yml --env-file .env pull
+                docker compose -f docker-compose.prod.yml --env-file .env up -d
+              fi
+            fi
+
+            # --- Nettoyage ---
+            echo "🧹 Nettoyage des anciennes images..."
+            docker image prune -f
+
+            # --- Vérification santé ---
+            echo ""
+            echo "⏳ Attente du démarrage des services (30s)..."
+            sleep 30
+
+            echo ""
+            echo "📊 État des services :"
+            docker compose -f docker-compose.prod.yml ps
+
+            # --- Healthcheck ---
+            echo ""
+            echo "🏥 Vérification de santé :"
+
+            # Vérifier que les conteneurs critiques sont running
+            FAILED=0
+            for SERVICE in nginx pms-server pms-client landing postgres redis keycloak kafka; do
+              STATUS=$(docker compose -f docker-compose.prod.yml ps --format '{{.State}}' $SERVICE 2>/dev/null || echo "not found")
+              if [ "$STATUS" = "running" ]; then
+                echo "   ✅ $SERVICE : running"
+              else
+                echo "   ❌ $SERVICE : $STATUS"
+                FAILED=1
+              fi
+            done
+
+            echo ""
+            if [ $FAILED -eq 1 ]; then
+              echo "⚠️  Certains services ne sont pas en bonne santé !"
+              echo "   Vérifiez les logs : docker compose -f docker-compose.prod.yml logs"
+              exit 1
+            else
+              echo "✅ Tous les services sont opérationnels !"
+              echo ""
+              echo "🌐 Services accessibles :"
+              echo "   - Landing   : https://clenzy.fr"
+              echo "   - PMS       : https://app.clenzy.fr"
+              echo "   - API       : https://app.clenzy.fr/api"
+              echo "   - Auth      : https://auth.clenzy.fr"
+            fi
