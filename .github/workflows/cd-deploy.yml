@@ -2,15 +2,15 @@
 # Clenzy — CD Deploy (Déploiement complet VPS)
 # ===========================================
 # Workflow pour déployer l'ensemble de l'infrastructure sur le VPS OVH.
-# Peut être déclenché :
+# Déclenché :
+#   - Automatiquement quand on push/merge sur la branche 'production'
 #   - Manuellement via workflow_dispatch
-#   - Automatiquement quand l'infra (nginx, monitoring, etc.) est modifiée
 
 name: CD Deploy
 
 on:
   push:
-    branches: [main]
+    branches: [production]
     paths:
       - 'docker-compose.prod.yml'
       - 'nginx/**'
@@ -70,8 +70,8 @@ jobs:
 
             # --- Mise à jour du repo infra ---
             echo "📥 Mise à jour du repo infrastructure..."
-            git fetch origin main
-            git reset --hard origin/main
+            git fetch origin production
+            git reset --hard origin/production
 
             # --- Backup avant déploiement ---
             echo "💾 Backup pré-déploiement..."
