@@ -54,6 +54,7 @@ services:
   # LANDING PAGE (site vitrine)
   # ==========================================
   landing:
+    image: ghcr.io/mazy06/clenzy-landing:latest
     build:
       context: ../clenzy-landingpage
       dockerfile: Dockerfile
@@ -179,6 +180,7 @@ services:
 
   # Backend Spring Boot
   pms-server:
+    image: ghcr.io/mazy06/clenzy-server:latest
     build:
       context: ../clenzy/server
       dockerfile: Dockerfile
@@ -243,6 +245,7 @@ services:
 
   # Frontend React (PMS)
   pms-client:
+    image: ghcr.io/mazy06/clenzy-client:latest
     build:
       context: ../clenzy/client
       dockerfile: Dockerfile
