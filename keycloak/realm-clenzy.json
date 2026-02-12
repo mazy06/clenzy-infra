@@ -1,0 +1,75 @@
+{
+  "realm": "clenzy",
+  "enabled": true,
+  "accessTokenLifespan": 86400,
+  "ssoSessionIdleTimeout": 86400,
+  "ssoSessionMaxLifespan": 604800,
+  "offlineSessionIdleTimeout": 2592000,
+  "offlineSessionMaxLifespan": 5184000,
+  "refreshTokenMaxReuse": 0,
+  "revokeRefreshToken": false,
+  "users": [
+    {
+      "username": "admin",
+      "enabled": true,
+      "email": "admin@clenzy.fr",
+      "emailVerified": true,
+      "firstName": "Admin",
+      "lastName": "User",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["ADMIN"]
+    }
+  ],
+  "roles": {
+    "realm": [
+      {"name": "ADMIN"},
+      {"name": "MANAGER"},
+      {"name": "HOST"},
+      {"name": "TECHNICIAN"},
+      {"name": "HOUSEKEEPER"},
+      {"name": "SUPERVISOR"}
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "clenzy-api",
+      "protocol": "openid-connect",
+      "name": "Clenzy API",
+      "publicClient": false,
+      "serviceAccountsEnabled": true,
+      "authorizationServicesEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "secret": "clenzy-secret",
+      "redirectUris": ["*"],
+      "webOrigins": ["*"],
+      "enabled": true
+    },
+    {
+      "clientId": "clenzy-web",
+      "protocol": "openid-connect",
+      "name": "Clenzy Web",
+      "publicClient": true,
+      "serviceAccountsEnabled": false,
+      "authorizationServicesEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "redirectUris": [
+        "http://localhost:3000/*",
+        "http://localhost:3001/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000",
+        "http://localhost:3001"
+      ],
+      "enabled": true
+    }
+  ]
+}

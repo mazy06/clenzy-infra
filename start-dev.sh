@@ -38,6 +38,38 @@ echo "   - Landing Page : ../clenzy-landingpage"
 echo "   - PMS          : ../clenzy"
 echo ""
 
-# Démarrage
-echo "🐳 Build et démarrage des conteneurs..."
-docker compose -f docker-compose.dev.yml --env-file .env.dev up --build "$@"
+# Arrêter les services existants proprement
+echo "🛑 Arrêt des services existants..."
+docker compose -f docker-compose.dev.yml --env-file .env.dev down --remove-orphans 2>/dev/null || true
+
+# Forcer le rebuild du frontend sans cache (pour toujours inclure les derniers changements)
+echo "🧹 Reconstruction du frontend (sans cache)..."
+docker compose -f docker-compose.dev.yml --env-file .env.dev build --no-cache pms-client
+
+# Démarrage de tous les services
+echo "🐳 Démarrage des conteneurs..."
+docker compose -f docker-compose.dev.yml --env-file .env.dev up -d
+
+# Attendre que les services soient prêts
+echo "⏳ Attente du démarrage des services..."
+sleep 10
+
+# Vérifier le statut des services
+echo ""
+echo "📊 Statut des services :"
+docker compose -f docker-compose.dev.yml --env-file .env.dev ps
+
+echo ""
+echo "✅ Environnement de développement démarré !"
+echo "🌐 Landing Page : http://localhost:8080"
+echo "🌐 PMS Frontend : http://localhost:3000"
+echo "🔧 PMS API      : http://localhost:8084"
+echo "🗄️  PostgreSQL   : localhost:5433"
+echo "🔑 Redis        : localhost:6379"
+echo "🔐 Keycloak     : http://localhost:8086"
+echo ""
+echo "🛑 Pour arrêter : ./stop.sh"
+echo ""
+echo "💡 Pour voir les logs en temps réel :"
+echo "   docker compose -f docker-compose.dev.yml --env-file .env.dev logs -f pms-client"
+echo "   docker compose -f docker-compose.dev.yml --env-file .env.dev logs -f pms-server"

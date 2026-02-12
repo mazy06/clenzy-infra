@@ -1,0 +1,6 @@
+# Ne jamais committer les données de backup
+data/
+*.tar.gz
+*.dump
+*.rdb
+*.sql.gz

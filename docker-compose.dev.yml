@@ -12,6 +12,12 @@ version: '3.8'
 #   - Keycloak       → http://localhost:8086
 #   - PostgreSQL     → localhost:5433
 #   - Redis          → localhost:6379
+#   - Kafka          → localhost:9092
+#   - Kafka UI       → http://localhost:8085
+#   - Mailpit (SMTP) → http://localhost:8025  (interface web emails)
+#   - Prometheus     → http://localhost:9090
+#   - Grafana        → http://localhost:3001 (admin/admin)
+#   - Loki          → http://localhost:3100
 
 services:
 
@@ -41,16 +47,16 @@ services:
     image: postgres:15-alpine
     container_name: clenzy-postgres-dev
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-clenzy_dev}
-      POSTGRES_USER: ${POSTGRES_USER:-clenzy}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clenzy123}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "5433:5432"
     volumes:
       - postgres-data-dev:/var/lib/postgresql/data
       - ./init-scripts:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-clenzy} -d ${POSTGRES_DB:-clenzy_dev}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -85,12 +91,12 @@ services:
     container_name: clenzy-keycloak-dev
     hostname: clenzy-keycloak
     environment:
-      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak_dev
-      KC_DB_USERNAME: ${POSTGRES_USER:-clenzy}
-      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-clenzy123}
+      KC_DB_USERNAME: ${POSTGRES_USER}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
       KC_HEALTH_ENABLED: "true"
       KC_METRICS_ENABLED: "true"
       KC_HOSTNAME_STRICT: "false"
@@ -105,12 +111,87 @@ services:
       postgres:
         condition: service_healthy
     volumes:
-      - ../clenzy/infrastructure/keycloak/realm-clenzy.json:/opt/keycloak/data/import/realm-clenzy.json
+      - ./keycloak/realm-clenzy.json:/opt/keycloak/data/import/realm-clenzy.json
     command: start-dev --import-realm
     networks:
       clenzy-network:
         aliases:
           - clenzy-keycloak
+
+  # ==========================================
+  # MESSAGE BROKER (Kafka + KRaft)
+  # ==========================================
+
+  # Apache Kafka (mode KRaft — sans Zookeeper)
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: clenzy-kafka-dev
+    hostname: clenzy-kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@clenzy-kafka:29093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:29093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://clenzy-kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      CLUSTER_ID: L8inmb8SRBme50IWzQulpw
+    volumes:
+      - kafka-data-dev:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks:
+      clenzy-network:
+        aliases:
+          - clenzy-kafka
+
+  # Kafka UI (monitoring des topics)
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: clenzy-kafka-ui-dev
+    ports:
+      - "8085:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: clenzy-dev
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: clenzy-kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - clenzy-network
+
+  # ==========================================
+  # EMAIL (Mailpit — SMTP de dev)
+  # ==========================================
+
+  # Mailpit — Serveur SMTP local pour le développement
+  # Interface web : http://localhost:8025
+  # SMTP : port 1025 (pas d'auth, pas de TLS)
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: clenzy-mailpit-dev
+    ports:
+      - "8025:8025"   # Interface web
+      - "1025:1025"   # SMTP
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    networks:
+      clenzy-network:
+        aliases:
+          - clenzy-mailpit
 
   # ==========================================
   # PMS (Application métier)
@@ -124,27 +205,39 @@ services:
     container_name: clenzy-server-dev
     environment:
       SPRING_PROFILES_ACTIVE: dev
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-clenzy_dev}
-      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-clenzy}
-      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-clenzy123}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://clenzy-keycloak:8080/realms/clenzy
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://clenzy-keycloak:8080/realms/clenzy/protocol/openid-connect/certs
       KEYCLOAK_TOKEN_URI: http://clenzy-keycloak:8080/realms/clenzy/protocol/openid-connect/token
       KEYCLOAK_LOGOUT_URI: http://clenzy-keycloak:8080/realms/clenzy/protocol/openid-connect/logout
       KEYCLOAK_CLIENT_ID: clenzy-web
-      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-clenzy-secret}
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET}
       KEYCLOAK_AUTH_SERVER_URL: http://clenzy-keycloak:8080
       KEYCLOAK_REALM: clenzy
       KEYCLOAK_MASTER_REALM: master
-      KEYCLOAK_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KEYCLOAK_ADMIN_USERNAME: ${KEYCLOAK_ADMIN}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
       KEYCLOAK_ADMIN_CLIENT_ID: admin-cli
       KEYCLOAK_ADMIN_REALM: clenzy
       SPRING_REDIS_HOST: clenzy-redis
       SPRING_REDIS_PORT: 6379
       SPRING_REDIS_PASSWORD: ""
       SPRING_REDIS_DATABASE: 0
+      # Kafka
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: clenzy-kafka:9092
+      # Mail (Mailpit en dev)
+      MAIL_HOST: clenzy-mailpit
+      MAIL_PORT: 1025
+      # Stripe (paiements)
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      FRONTEND_URL: http://localhost:3000
+      # Jasypt (chiffrement tokens Airbnb en base)
+      JASYPT_ENCRYPTOR_PASSWORD: ${JASYPT_ENCRYPTOR_PASSWORD:-dev-jasypt-secret-key}
     ports:
       - "8084:8080"
     depends_on:
@@ -153,6 +246,8 @@ services:
       keycloak:
         condition: service_started
       redis:
+        condition: service_healthy
+      kafka:
         condition: service_healthy
     networks:
       clenzy-network:
@@ -164,6 +259,14 @@ services:
     build:
       context: ../clenzy/client
       dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: http://localhost:8084
+        VITE_API_BASE_PATH: /api
+        VITE_KEYCLOAK_URL: http://localhost:8086
+        VITE_KEYCLOAK_REALM: clenzy
+        VITE_KEYCLOAK_CLIENT_ID: clenzy-web
+        VITE_APP_NAME: Clenzy
+        VITE_APP_VERSION: 1.0.0
     container_name: clenzy-frontend-dev
     ports:
       - "3000:80"
@@ -174,9 +277,96 @@ services:
         aliases:
           - clenzy-frontend
 
+  # ==========================================
+  # MONITORING (Prometheus + Grafana)
+  # ==========================================
+
+  # Prometheus - Collecte de métriques
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: clenzy-prometheus-dev
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data-dev:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+    depends_on:
+      pms-server:
+        condition: service_started
+    networks:
+      clenzy-network:
+        aliases:
+          - prometheus
+
+  # Grafana - Dashboards de monitoring
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: clenzy-grafana-dev
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana-data-dev:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    networks:
+      clenzy-network:
+        aliases:
+          - grafana
+
+  # Loki - Aggregation de logs
+  loki:
+    image: grafana/loki:2.9.4
+    container_name: clenzy-loki-dev
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./monitoring/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki-data-dev:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3100/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      clenzy-network:
+        aliases:
+          - loki
+
+  # Promtail - Collecte de logs vers Loki
+  promtail:
+    image: grafana/promtail:2.9.4
+    container_name: clenzy-promtail-dev
+    volumes:
+      - ./monitoring/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      loki:
+        condition: service_healthy
+    networks:
+      - clenzy-network
+
 volumes:
   postgres-data-dev:
   redis-data-dev:
+  kafka-data-dev:
+  prometheus-data-dev:
+  grafana-data-dev:
+  loki-data-dev:
 
 networks:
   clenzy-network:
