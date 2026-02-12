@@ -1,0 +1,254 @@
+version: '3.8'
+
+# ===========================================
+# Clenzy - Docker Compose STAGING
+# ===========================================
+# Usage: docker compose -f docker-compose.staging.yml --env-file .env.staging up -d
+#
+# Architecture (miroir de la production) :
+#   - Landing Page   → staging.clenzy.fr
+#   - PMS Frontend   → app.staging.clenzy.fr
+#   - PMS API        → app.staging.clenzy.fr/api
+#   - Keycloak       → auth.staging.clenzy.fr
+#   - Prometheus     → localhost:9090 (interne)
+#   - Grafana        → monitoring.staging.clenzy.fr
+
+services:
+
+  # ==========================================
+  # REVERSE PROXY NGINX
+  # ==========================================
+  nginx:
+    image: nginx:alpine
+    container_name: clenzy-nginx-staging
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - certbot-webroot-staging:/var/www/certbot:ro
+      - certbot-certs-staging:/etc/letsencrypt:ro
+    depends_on:
+      - landing
+      - pms-client
+      - pms-server
+      - keycloak
+    networks:
+      - clenzy-network-staging
+
+  # ==========================================
+  # CERTBOT (Let's Encrypt SSL)
+  # ==========================================
+  certbot:
+    image: certbot/certbot:latest
+    container_name: clenzy-certbot-staging
+    volumes:
+      - certbot-webroot-staging:/var/www/certbot
+      - certbot-certs-staging:/etc/letsencrypt
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done;'"
+    networks:
+      - clenzy-network-staging
+
+  # ==========================================
+  # LANDING PAGE
+  # ==========================================
+  landing:
+    build:
+      context: ../clenzy-landingpage
+      dockerfile: Dockerfile
+      args:
+        VITE_APP_URL: https://${APP_DOMAIN}
+    container_name: clenzy-landing-staging
+    restart: unless-stopped
+    expose:
+      - "80"
+    networks:
+      clenzy-network-staging:
+        aliases:
+          - clenzy-landing
+
+  # ==========================================
+  # INFRASTRUCTURE (BDD, Cache, Auth)
+  # ==========================================
+
+  # PostgreSQL
+  postgres:
+    image: postgres:15-alpine
+    container_name: clenzy-postgres-staging
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    volumes:
+      - postgres-data-staging:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - clenzy-network-staging
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: clenzy-redis-staging
+    restart: unless-stopped
+    volumes:
+      - redis-data-staging:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD}
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - clenzy-network-staging
+
+  # Keycloak
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0.5
+    container_name: clenzy-keycloak-staging
+    restart: unless-stopped
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak_staging
+      KC_DB_USERNAME: ${POSTGRES_USER}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      KC_HOSTNAME: ${AUTH_DOMAIN}
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY: edge
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./keycloak/realm-clenzy.json:/opt/keycloak/data/import/realm-clenzy.json
+    expose:
+      - "8080"
+    command: start --import-realm
+    networks:
+      clenzy-network-staging:
+        aliases:
+          - clenzy-keycloak
+
+  # ==========================================
+  # PMS (Application métier)
+  # ==========================================
+
+  # Backend Spring Boot
+  pms-server:
+    build:
+      context: ../clenzy/server
+      dockerfile: Dockerfile
+    container_name: clenzy-server-staging
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: staging
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}?sslmode=prefer
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: https://${AUTH_DOMAIN}/realms/clenzy
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://clenzy-keycloak:8080/realms/clenzy/protocol/openid-connect/certs
+      KEYCLOAK_AUTH_SERVER_URL: http://clenzy-keycloak:8080
+      KEYCLOAK_CLIENT_ID: clenzy-api
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET}
+      KEYCLOAK_REALM: clenzy
+      KEYCLOAK_ADMIN_USERNAME: ${KEYCLOAK_ADMIN}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      SPRING_REDIS_HOST: clenzy-redis
+      SPRING_REDIS_PORT: 6379
+      SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      ALLOWED_ORIGINS: https://${APP_DOMAIN}
+      SERVER_PORT: 8080
+    expose:
+      - "8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    networks:
+      clenzy-network-staging:
+        aliases:
+          - clenzy-server
+
+  # Frontend React (PMS)
+  pms-client:
+    build:
+      context: ../clenzy/client
+      dockerfile: Dockerfile
+    container_name: clenzy-client-staging
+    restart: unless-stopped
+    expose:
+      - "80"
+    networks:
+      clenzy-network-staging:
+        aliases:
+          - clenzy-frontend
+
+  # ==========================================
+  # MONITORING
+  # ==========================================
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: clenzy-prometheus-staging
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data-staging:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+    depends_on:
+      pms-server:
+        condition: service_started
+    networks:
+      - clenzy-network-staging
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: clenzy-grafana-staging
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: https://${MONITORING_DOMAIN}
+    volumes:
+      - grafana-data-staging:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    networks:
+      - clenzy-network-staging
+
+volumes:
+  postgres-data-staging:
+  redis-data-staging:
+  certbot-webroot-staging:
+  certbot-certs-staging:
+  prometheus-data-staging:
+  grafana-data-staging:
+
+networks:
+  clenzy-network-staging:
+    driver: bridge
+    name: clenzy-network-staging

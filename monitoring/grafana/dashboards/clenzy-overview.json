@@ -1,0 +1,149 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "title": "Requetes/s",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
+      "targets": [{
+        "expr": "rate(http_server_requests_seconds_count{job=\"clenzy-backend\"}[1m])",
+        "legendFormat": "{{method}} {{uri}} {{status}}"
+      }],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps" }
+      }
+    },
+    {
+      "title": "Latence p50 / p95 / p99",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 0 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, rate(http_server_requests_seconds_bucket{job=\"clenzy-backend\"}[5m]))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(http_server_requests_seconds_bucket{job=\"clenzy-backend\"}[5m]))",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, rate(http_server_requests_seconds_bucket{job=\"clenzy-backend\"}[5m]))",
+          "legendFormat": "p99"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "s" }
+      }
+    },
+    {
+      "title": "Erreurs HTTP (4xx + 5xx)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 },
+      "targets": [
+        {
+          "expr": "rate(http_server_requests_seconds_count{job=\"clenzy-backend\", status=~\"4..\"}[5m])",
+          "legendFormat": "4xx"
+        },
+        {
+          "expr": "rate(http_server_requests_seconds_count{job=\"clenzy-backend\", status=~\"5..\"}[5m])",
+          "legendFormat": "5xx"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps" }
+      }
+    },
+    {
+      "title": "JVM Heap Memory",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "jvm_memory_used_bytes{job=\"clenzy-backend\", area=\"heap\"}",
+          "legendFormat": "Used"
+        },
+        {
+          "expr": "jvm_memory_max_bytes{job=\"clenzy-backend\", area=\"heap\"}",
+          "legendFormat": "Max"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "bytes" }
+      }
+    },
+    {
+      "title": "HikariCP - Connexions BDD",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 8 },
+      "targets": [
+        {
+          "expr": "hikaricp_connections_active{job=\"clenzy-backend\"}",
+          "legendFormat": "Active"
+        },
+        {
+          "expr": "hikaricp_connections_idle{job=\"clenzy-backend\"}",
+          "legendFormat": "Idle"
+        },
+        {
+          "expr": "hikaricp_connections_pending{job=\"clenzy-backend\"}",
+          "legendFormat": "Pending"
+        }
+      ]
+    },
+    {
+      "title": "Uptime",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 8 },
+      "targets": [{
+        "expr": "process_uptime_seconds{job=\"clenzy-backend\"}",
+        "legendFormat": "Uptime"
+      }],
+      "fieldConfig": {
+        "defaults": { "unit": "s" }
+      }
+    },
+    {
+      "title": "Logins (Audit)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 8 },
+      "targets": [{
+        "expr": "increase(clenzy_user_login_total{job=\"clenzy-backend\"}[24h])",
+        "legendFormat": "Logins 24h"
+      }]
+    },
+    {
+      "title": "Cache Redis - Hit/Miss",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 12 },
+      "targets": [
+        {
+          "expr": "rate(clenzy_cache_hits_total{job=\"clenzy-backend\"}[5m])",
+          "legendFormat": "Hits"
+        },
+        {
+          "expr": "rate(clenzy_cache_misses_total{job=\"clenzy-backend\"}[5m])",
+          "legendFormat": "Misses"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ops" }
+      }
+    }
+  ],
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["clenzy", "overview"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "Europe/Paris",
+  "title": "Clenzy PMS - Overview",
+  "uid": "clenzy-overview",
+  "version": 1
+}

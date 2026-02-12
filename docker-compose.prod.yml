@@ -128,7 +128,7 @@ services:
       postgres:
         condition: service_healthy
     volumes:
-      - ../clenzy/infrastructure/keycloak/realm-clenzy.json:/opt/keycloak/data/import/realm-clenzy.json
+      - ./keycloak/realm-clenzy.json:/opt/keycloak/data/import/realm-clenzy.json
     expose:
       - "8080"
     command: start --import-realm
@@ -136,6 +136,42 @@ services:
       clenzy-network:
         aliases:
           - clenzy-keycloak
+
+  # ==========================================
+  # MESSAGE BROKER (Kafka + KRaft)
+  # ==========================================
+
+  # Apache Kafka (mode KRaft — sans Zookeeper)
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: clenzy-kafka-prod
+    hostname: clenzy-kafka
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@clenzy-kafka:29093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:29093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://clenzy-kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_LOG_RETENTION_HOURS: 720
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      CLUSTER_ID: clenzy-kafka-cluster-prod-001
+    volumes:
+      - kafka-data-prod:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks:
+      - clenzy-network
 
   # ==========================================
   # PMS (Application métier)
@@ -160,7 +196,7 @@ services:
       STRIPE_SUCCESS_URL: https://app.clenzy.fr/interventions/payment/success?session_id={CHECKOUT_SESSION_ID}
       STRIPE_CANCEL_URL: https://app.clenzy.fr/interventions/payment/cancel
       ALLOWED_ORIGINS: https://clenzy.fr,https://app.clenzy.fr
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}?sslmode=prefer
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: https://${AUTH_DOMAIN}/realms/clenzy
@@ -173,6 +209,21 @@ services:
       SPRING_REDIS_HOST: clenzy-redis
       SPRING_REDIS_PORT: 6379
       SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      # Stripe
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      # Kafka
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: clenzy-kafka:9092
+      # Jasypt (chiffrement tokens Airbnb en base)
+      JASYPT_ENCRYPTOR_PASSWORD: ${JASYPT_ENCRYPTOR_PASSWORD}
+      # Airbnb Integration
+      AIRBNB_CLIENT_ID: ${AIRBNB_CLIENT_ID:-}
+      AIRBNB_CLIENT_SECRET: ${AIRBNB_CLIENT_SECRET:-}
+      AIRBNB_REDIRECT_URI: https://${APP_DOMAIN}/api/airbnb/callback
+      AIRBNB_WEBHOOK_SECRET: ${AIRBNB_WEBHOOK_SECRET:-}
+      # CORS
+      ALLOWED_ORIGINS: https://${APP_DOMAIN}
       SERVER_PORT: 8080
     expose:
       - "8080"
@@ -182,6 +233,8 @@ services:
       keycloak:
         condition: service_started
       redis:
+        condition: service_healthy
+      kafka:
         condition: service_healthy
     networks:
       clenzy-network:
@@ -202,11 +255,94 @@ services:
         aliases:
           - clenzy-frontend
 
+  # ==========================================
+  # MONITORING (Prometheus + Grafana)
+  # ==========================================
+
+  # Prometheus - Collecte de métriques
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: clenzy-prometheus-prod
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data-prod:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=90d'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+    depends_on:
+      pms-server:
+        condition: service_started
+    networks:
+      - clenzy-network
+
+  # Grafana - Dashboards de monitoring
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: clenzy-grafana-prod
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: https://${MONITORING_DOMAIN:-monitoring.clenzy.fr}
+      GF_SERVER_SERVE_FROM_SUB_PATH: "false"
+    volumes:
+      - grafana-data-prod:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    networks:
+      - clenzy-network
+
+  # Loki - Aggregation de logs
+  loki:
+    image: grafana/loki:2.9.4
+    container_name: clenzy-loki-prod
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki-data-prod:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3100/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      clenzy-network:
+        aliases:
+          - loki
+
+  # Promtail - Collecte de logs vers Loki
+  promtail:
+    image: grafana/promtail:2.9.4
+    container_name: clenzy-promtail-prod
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      loki:
+        condition: service_healthy
+    networks:
+      - clenzy-network
+
 volumes:
   postgres-data-prod:
   redis-data-prod:
+  kafka-data-prod:
   certbot-webroot:
   certbot-certs:
+  prometheus-data-prod:
+  grafana-data-prod:
+  loki-data-prod:
 
 networks:
   clenzy-network:
