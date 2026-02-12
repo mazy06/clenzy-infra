@@ -33,12 +33,6 @@ scrape_configs:
             logger: logger_name
             message: message
             thread: thread_name
-            timestamp: "@timestamp"
       - labels:
           level:
           logger:
-      - timestamp:
-          source: timestamp
-          format: "2006-01-02T15:04:05.999Z07:00"
-          fallback_formats:
-            - "2006-01-02T15:04:05.999"
