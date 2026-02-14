@@ -6,6 +6,7 @@
 #   - Automatiquement quand on push/merge sur la branche 'production'
 #   - Manuellement via workflow_dispatch
 # Note: trigger via push requires matching one of the configured paths below.
+# Note: updating GitHub environment secrets/variables does not trigger this workflow automatically.
 
 name: CD Deploy
 
