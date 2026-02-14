@@ -171,15 +171,16 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_LOG_RETENTION_HOURS: 720
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
-      CLUSTER_ID: clenzy-kafka-cluster-prod-001
+      # KRaft cluster id must be a valid base64 UUID-like token (22 chars).
+      CLUSTER_ID: ${KAFKA_CLUSTER_ID:-CHANGE_ME_kafka_cluster_id}
     volumes:
       - kafka-data-prod:/var/lib/kafka/data
     healthcheck:
       test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
       interval: 15s
       timeout: 10s
-      retries: 10
-      start_period: 30s
+      retries: 20
+      start_period: 90s
     networks:
       - clenzy-network
 
