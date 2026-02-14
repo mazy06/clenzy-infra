@@ -1,0 +1,36 @@
+#!/bin/bash
+# ===========================================
+# Pre-push hook: Interdit le push direct sur production.
+# Le workflow est : main -> merge/PR -> production.
+# ===========================================
+
+PROTECTED_BRANCH="production"
+
+while read local_ref local_sha remote_ref remote_sha; do
+    if echo "$remote_ref" | grep -qE "refs/heads/${PROTECTED_BRANCH}$"; then
+        current_branch=$(git symbolic-ref --short HEAD 2>/dev/null)
+
+        # Autoriser si on est sur main et qu'on merge vers production (via script de deploy)
+        # Bloquer les push directs depuis production
+        if [ "$current_branch" = "$PROTECTED_BRANCH" ]; then
+            echo ""
+            echo "  ❌  Push direct sur '${PROTECTED_BRANCH}' interdit."
+            echo ""
+            echo "  Workflow attendu :"
+            echo "    1. Commiter sur 'main'"
+            echo "    2. Merger 'main' -> '${PROTECTED_BRANCH}'"
+            echo "    3. Pusher '${PROTECTED_BRANCH}'"
+            echo ""
+            echo "  Exemple :"
+            echo "    git checkout main && git push origin main"
+            echo "    git checkout ${PROTECTED_BRANCH} && git merge main"
+            echo "    git push origin ${PROTECTED_BRANCH}"
+            echo ""
+            echo "  Pour forcer (urgence) : git push --no-verify origin ${PROTECTED_BRANCH}"
+            echo ""
+            exit 1
+        fi
+    fi
+done
+
+exit 0
