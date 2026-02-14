@@ -143,6 +143,12 @@ jobs:
 
             # --- Bootstrap DB Keycloak ---
             KEYCLOAK_DB_NAME="${KEYCLOAK_DB_NAME:-keycloak_prod}"
+            KEYCLOAK_DB_USER="${KEYCLOAK_DB_USER:-${POSTGRES_USER}}"
+            KEYCLOAK_DB_PASSWORD="${KEYCLOAK_DB_PASSWORD:-${POSTGRES_PASSWORD:-}}"
+            if [ -z "$KEYCLOAK_DB_PASSWORD" ]; then
+              echo "❌ KEYCLOAK_DB_PASSWORD/POSTGRES_PASSWORD manquant dans .env."
+              exit 1
+            fi
             echo "🗄️  Vérification base Keycloak (${KEYCLOAK_DB_NAME})..."
             docker compose -f docker-compose.prod.yml --env-file .env up -d postgres
 
@@ -157,6 +163,12 @@ jobs:
               sleep 2
             done
 
+            echo "👤 Synchronisation du rôle DB Keycloak (${KEYCLOAK_DB_USER})..."
+            docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
+              psql -U "${POSTGRES_USER}" -d postgres -v ON_ERROR_STOP=1 \
+              -v kc_user="${KEYCLOAK_DB_USER}" -v kc_password="${KEYCLOAK_DB_PASSWORD}" \
+              -c "DO \$do\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'kc_user') THEN EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', :'kc_user', :'kc_password'); ELSE EXECUTE format('ALTER ROLE %I WITH LOGIN PASSWORD %L', :'kc_user', :'kc_password'); END IF; END \$do\$;"
+
             DB_EXISTS=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
               psql -U "${POSTGRES_USER}" -d postgres -tAc \
               "SELECT 1 FROM pg_database WHERE datname='${KEYCLOAK_DB_NAME}'")
@@ -164,7 +176,20 @@ jobs:
               echo "➕ Création de la base ${KEYCLOAK_DB_NAME}..."
               docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
                 psql -U "${POSTGRES_USER}" -d postgres -v ON_ERROR_STOP=1 \
-                -c "CREATE DATABASE \"${KEYCLOAK_DB_NAME}\" OWNER \"${POSTGRES_USER}\";"
+                -v kc_db="${KEYCLOAK_DB_NAME}" -v kc_user="${KEYCLOAK_DB_USER}" \
+                -c "DO \$do\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = :'kc_db') THEN EXECUTE format('CREATE DATABASE %I OWNER %I', :'kc_db', :'kc_user'); END IF; END \$do\$;"
+            fi
+
+            docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
+              psql -U "${POSTGRES_USER}" -d postgres -v ON_ERROR_STOP=1 \
+              -c "GRANT ALL PRIVILEGES ON DATABASE \"${KEYCLOAK_DB_NAME}\" TO \"${KEYCLOAK_DB_USER}\";"
+
+            AUTH_OK=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T \
+              -e PGPASSWORD="${KEYCLOAK_DB_PASSWORD}" postgres \
+              psql -h localhost -U "${KEYCLOAK_DB_USER}" -d "${KEYCLOAK_DB_NAME}" -tAc "SELECT 1" 2>/dev/null || true)
+            if [ "$AUTH_OK" != "1" ]; then
+              echo "❌ Auth DB Keycloak invalide (${KEYCLOAK_DB_USER}@${KEYCLOAK_DB_NAME})."
+              exit 1
             fi
 
             # --- Backup avant déploiement ---
@@ -220,6 +245,25 @@ jobs:
                 FAILED=1
               fi
             done
+
+            echo "🔎 Vérification readiness HTTP de Keycloak..."
+            KEYCLOAK_READY=0
+            for _ in $(seq 1 30); do
+              READY_PAYLOAD=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T nginx \
+                sh -lc "wget -qO- http://clenzy-keycloak:8080/health/ready" 2>/dev/null || true)
+              if echo "$READY_PAYLOAD" | grep -q '"status"[[:space:]]*:[[:space:]]*"UP"'; then
+                KEYCLOAK_READY=1
+                break
+              fi
+              sleep 2
+            done
+            if [ "$KEYCLOAK_READY" -eq 1 ]; then
+              echo "   ✅ keycloak readiness HTTP: UP"
+            else
+              echo "   ❌ keycloak readiness HTTP: KO"
+              docker compose -f docker-compose.prod.yml --env-file .env logs --tail=120 keycloak || true
+              FAILED=1
+            fi
 
             echo ""
             if [ $FAILED -eq 1 ]; then
