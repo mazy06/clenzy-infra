@@ -173,7 +173,8 @@ http {
         location /api/ {
             limit_req zone=api burst=20 nodelay;
 
-            proxy_pass http://pms_backend;
+            set $pms_backend_upstream http://clenzy-server:8080;
+            proxy_pass $pms_backend_upstream;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -189,7 +190,8 @@ http {
 
         # Frontend React (PMS)
         location / {
-            proxy_pass http://pms_frontend;
+            set $pms_frontend_upstream http://clenzy-frontend:80;
+            proxy_pass $pms_frontend_upstream;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -197,7 +199,8 @@ http {
 
             # Cache assets statiques
             location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
-                proxy_pass http://pms_frontend;
+                set $pms_frontend_upstream http://clenzy-frontend:80;
+                proxy_pass $pms_frontend_upstream;
                 expires 1y;
                 add_header Cache-Control "public, immutable";
                 access_log off;
