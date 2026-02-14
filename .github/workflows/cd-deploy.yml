@@ -149,6 +149,11 @@ jobs:
               echo "❌ KEYCLOAK_DB_PASSWORD/POSTGRES_PASSWORD manquant dans .env."
               exit 1
             fi
+            KEYCLOAK_DB_NAME_LIT=$(printf '%s' "${KEYCLOAK_DB_NAME}" | sed "s/'/''/g")
+            KEYCLOAK_DB_NAME_IDENT=$(printf '%s' "${KEYCLOAK_DB_NAME}" | sed 's/"/""/g')
+            KEYCLOAK_DB_USER_LIT=$(printf '%s' "${KEYCLOAK_DB_USER}" | sed "s/'/''/g")
+            KEYCLOAK_DB_USER_IDENT=$(printf '%s' "${KEYCLOAK_DB_USER}" | sed 's/"/""/g')
+            KEYCLOAK_DB_PASSWORD_LIT=$(printf '%s' "${KEYCLOAK_DB_PASSWORD}" | sed "s/'/''/g")
             echo "🗄️  Vérification base Keycloak (${KEYCLOAK_DB_NAME})..."
             docker compose -f docker-compose.prod.yml --env-file .env up -d postgres
 
@@ -164,25 +169,32 @@ jobs:
             done
 
             echo "👤 Synchronisation du rôle DB Keycloak (${KEYCLOAK_DB_USER})..."
-            docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-              psql -U "${POSTGRES_USER}" -d postgres -v ON_ERROR_STOP=1 \
-              -v kc_user="${KEYCLOAK_DB_USER}" -v kc_password="${KEYCLOAK_DB_PASSWORD}" \
-              -c "DO \$do\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'kc_user') THEN EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', :'kc_user', :'kc_password'); ELSE EXECUTE format('ALTER ROLE %I WITH LOGIN PASSWORD %L', :'kc_user', :'kc_password'); END IF; END \$do\$;"
+            ROLE_EXISTS=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
+              psql -U "${POSTGRES_USER}" -d postgres -tAc \
+              "SELECT 1 FROM pg_roles WHERE rolname='${KEYCLOAK_DB_USER_LIT}'")
+            if [ "$ROLE_EXISTS" = "1" ]; then
+              docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
+                psql -U "${POSTGRES_USER}" -d postgres -v ON_ERROR_STOP=1 \
+                -c "ALTER ROLE \"${KEYCLOAK_DB_USER_IDENT}\" WITH LOGIN PASSWORD '${KEYCLOAK_DB_PASSWORD_LIT}';"
+            else
+              docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
+                psql -U "${POSTGRES_USER}" -d postgres -v ON_ERROR_STOP=1 \
+                -c "CREATE ROLE \"${KEYCLOAK_DB_USER_IDENT}\" LOGIN PASSWORD '${KEYCLOAK_DB_PASSWORD_LIT}';"
+            fi
 
             DB_EXISTS=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
               psql -U "${POSTGRES_USER}" -d postgres -tAc \
-              "SELECT 1 FROM pg_database WHERE datname='${KEYCLOAK_DB_NAME}'")
+              "SELECT 1 FROM pg_database WHERE datname='${KEYCLOAK_DB_NAME_LIT}'")
             if [ "$DB_EXISTS" != "1" ]; then
               echo "➕ Création de la base ${KEYCLOAK_DB_NAME}..."
               docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
                 psql -U "${POSTGRES_USER}" -d postgres -v ON_ERROR_STOP=1 \
-                -v kc_db="${KEYCLOAK_DB_NAME}" -v kc_user="${KEYCLOAK_DB_USER}" \
-                -c "DO \$do\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = :'kc_db') THEN EXECUTE format('CREATE DATABASE %I OWNER %I', :'kc_db', :'kc_user'); END IF; END \$do\$;"
+                -c "CREATE DATABASE \"${KEYCLOAK_DB_NAME_IDENT}\" OWNER \"${KEYCLOAK_DB_USER_IDENT}\";"
             fi
 
             docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
               psql -U "${POSTGRES_USER}" -d postgres -v ON_ERROR_STOP=1 \
-              -c "GRANT ALL PRIVILEGES ON DATABASE \"${KEYCLOAK_DB_NAME}\" TO \"${KEYCLOAK_DB_USER}\";"
+              -c "GRANT ALL PRIVILEGES ON DATABASE \"${KEYCLOAK_DB_NAME_IDENT}\" TO \"${KEYCLOAK_DB_USER_IDENT}\";"
 
             AUTH_OK=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T \
               -e PGPASSWORD="${KEYCLOAK_DB_PASSWORD}" postgres \
