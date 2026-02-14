@@ -237,6 +237,11 @@ jobs:
             echo "🧹 Nettoyage des anciennes images..."
             docker image prune -f
 
+            # Recharge/recrée Nginx pour appliquer les templates envsubst
+            # (sinon Nginx peut garder une ancienne resolution d'upstream).
+            echo "♻️  Recréation de Nginx pour recharger la configuration..."
+            docker compose -f docker-compose.prod.yml --env-file .env up -d --no-deps --force-recreate nginx
+
             # --- Vérification santé ---
             echo ""
             echo "⏳ Attente du démarrage des services (30s)..."
