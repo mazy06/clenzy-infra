@@ -212,20 +212,24 @@ jobs:
 
             DEPLOY_MODE="${{ github.event.client_payload.deploy_mode || github.event.inputs.deploy_mode || 'update' }}"
             SERVICES="${{ github.event.client_payload.services || github.event.client_payload.service || github.event.inputs.services || '' }}"
+            SERVICES_LIST=$(echo "$SERVICES" | tr ',' ' ')
 
             if [ "$DEPLOY_MODE" = "full-rebuild" ]; then
               echo "🔄 Rebuild complet de tous les services..."
               docker compose -f docker-compose.prod.yml --env-file .env pull
               docker compose -f docker-compose.prod.yml --env-file .env up -d --force-recreate
+              HEALTH_SERVICES="nginx pms-server pms-client landing postgres redis keycloak kafka"
             else
-              if [ -n "$SERVICES" ]; then
-                echo "📦 Mise à jour des services : $SERVICES"
-                docker compose -f docker-compose.prod.yml --env-file .env pull $SERVICES
-                docker compose -f docker-compose.prod.yml --env-file .env up -d $SERVICES
+              if [ -n "$SERVICES_LIST" ]; then
+                echo "📦 Mise à jour des services : $SERVICES_LIST"
+                docker compose -f docker-compose.prod.yml --env-file .env pull $SERVICES_LIST
+                docker compose -f docker-compose.prod.yml --env-file .env up -d $SERVICES_LIST
+                HEALTH_SERVICES="$SERVICES_LIST"
               else
                 echo "📦 Mise à jour de tous les services..."
                 docker compose -f docker-compose.prod.yml --env-file .env pull
                 docker compose -f docker-compose.prod.yml --env-file .env up -d
+                HEALTH_SERVICES="nginx pms-server pms-client landing postgres redis keycloak kafka"
               fi
             fi
 
@@ -248,7 +252,7 @@ jobs:
 
             # Vérifier que les conteneurs critiques sont running
             FAILED=0
-            for SERVICE in nginx pms-server pms-client landing postgres redis keycloak kafka; do
+            for SERVICE in $HEALTH_SERVICES; do
               STATUS=$(docker compose -f docker-compose.prod.yml ps --format '{{.State}}' $SERVICE 2>/dev/null || echo "not found")
               if [ "$STATUS" = "running" ]; then
                 echo "   ✅ $SERVICE : running"
@@ -258,23 +262,25 @@ jobs:
               fi
             done
 
-            echo "🔎 Vérification readiness HTTP de Keycloak..."
-            KEYCLOAK_READY=0
-            for _ in $(seq 1 30); do
-              READY_PAYLOAD=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T nginx \
-                sh -lc "wget -qO- http://clenzy-keycloak:8080/health/ready" 2>/dev/null || true)
-              if echo "$READY_PAYLOAD" | grep -q '"status"[[:space:]]*:[[:space:]]*"UP"'; then
-                KEYCLOAK_READY=1
-                break
+            if echo " $HEALTH_SERVICES " | grep -q " keycloak "; then
+              echo "🔎 Vérification readiness HTTP de Keycloak..."
+              KEYCLOAK_READY=0
+              for _ in $(seq 1 30); do
+                READY_PAYLOAD=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T nginx \
+                  sh -lc "wget -qO- http://clenzy-keycloak:8080/health/ready" 2>/dev/null || true)
+                if echo "$READY_PAYLOAD" | grep -q '"status"[[:space:]]*:[[:space:]]*"UP"'; then
+                  KEYCLOAK_READY=1
+                  break
+                fi
+                sleep 2
+              done
+              if [ "$KEYCLOAK_READY" -eq 1 ]; then
+                echo "   ✅ keycloak readiness HTTP: UP"
+              else
+                echo "   ❌ keycloak readiness HTTP: KO"
+                docker compose -f docker-compose.prod.yml --env-file .env logs --tail=120 keycloak || true
+                FAILED=1
               fi
-              sleep 2
-            done
-            if [ "$KEYCLOAK_READY" -eq 1 ]; then
-              echo "   ✅ keycloak readiness HTTP: UP"
-            else
-              echo "   ❌ keycloak readiness HTTP: KO"
-              docker compose -f docker-compose.prod.yml --env-file .env logs --tail=120 keycloak || true
-              FAILED=1
             fi
 
             echo ""
