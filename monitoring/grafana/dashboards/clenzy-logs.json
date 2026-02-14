@@ -15,6 +15,17 @@
       "title": "Overview (Metrics)",
       "type": "link",
       "url": "/d/clenzy-overview"
+    },
+    {
+      "asDropdown": false,
+      "icon": "bolt",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": false,
+      "title": "Prometheus (Infra)",
+      "type": "link",
+      "url": "/d/clenzy-prometheus"
     }
   ],
   "liveNow": false,
