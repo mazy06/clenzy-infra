@@ -334,7 +334,7 @@ services:
 
   # Loki - Aggregation de logs
   loki:
-    image: grafana/loki:3.5.10
+    image: grafana/loki:2.9.17
     container_name: clenzy-loki-prod
     restart: unless-stopped
     volumes:
