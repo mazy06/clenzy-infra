@@ -22,11 +22,20 @@ services:
     image: nginx:alpine
     container_name: clenzy-nginx-staging
     restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN}
+      APP_DOMAIN: ${APP_DOMAIN}
+      AUTH_DOMAIN: ${AUTH_DOMAIN}
+      CERTBOT_CERT_NAME: ${CERTBOT_CERT_NAME:-${DOMAIN}}
+      NGINX_ENVSUBST_FILTER: ^(DOMAIN|APP_DOMAIN|AUTH_DOMAIN|CERTBOT_CERT_NAME)$
+      NGINX_ENVSUBST_TEMPLATE_DIR: /etc/nginx/templates
+      NGINX_ENVSUBST_TEMPLATE_SUFFIX: .template
+      NGINX_ENVSUBST_OUTPUT_DIR: /etc/nginx
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/nginx.conf.template:/etc/nginx/templates/nginx.conf.template:ro
       - ./nginx/ssl:/etc/nginx/ssl:ro
       - certbot-webroot-staging:/var/www/certbot:ro
       - certbot-certs-staging:/etc/letsencrypt:ro

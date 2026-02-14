@@ -241,7 +241,7 @@ clenzy-infra/
 ├── docker-compose.dev.yml       # Orchestration dev (6 services, ports exposes)
 ├── docker-compose.prod.yml      # Orchestration prod (8 services + Nginx + Certbot)
 ├── nginx/
-│   ├── nginx.conf               # Config reverse proxy prod (routing par sous-domaine)
+│   ├── nginx.conf.template      # Template reverse proxy prod (variables DOMAIN/APP_DOMAIN/AUTH_DOMAIN)
 │   └── ssl/                     # Certificats SSL auto-signes (dev)
 │       ├── clenzy.fr.crt
 │       └── clenzy.fr.key
@@ -299,6 +299,7 @@ nano .env
 | `DOMAIN`               | Domaine principal (ex: clenzy.fr)        |
 | `APP_DOMAIN`           | Sous-domaine PMS (ex: app.clenzy.fr)     |
 | `AUTH_DOMAIN`          | Sous-domaine auth (ex: auth.clenzy.fr)   |
+| `CERTBOT_CERT_NAME`    | Nom du certificat dans `/etc/letsencrypt/live` (souvent identique a `DOMAIN`) |
 
 ## SSL / Let's Encrypt
 
@@ -325,6 +326,7 @@ En production, le projet utilise **Certbot** pour generer des certificats SSL gr
 cp .env.example .env
 nano .env
 # Renseigner DOMAIN, APP_DOMAIN, AUTH_DOMAIN, LETSENCRYPT_EMAIL
+# Optionnel: CERTBOT_CERT_NAME (par defaut = DOMAIN)
 
 # 2. Lancer le script d'initialisation
 ./init-letsencrypt.sh
