@@ -101,6 +101,7 @@ services:
       POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
     volumes:
       - postgres-data-prod:/var/lib/postgresql/data
+      - ./postgres/sync-password.sh:/docker-entrypoint-initdb.d/sync-password.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
@@ -135,8 +136,8 @@ services:
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/${KEYCLOAK_DB_NAME:-keycloak_prod}
-      KC_DB_USERNAME: ${KEYCLOAK_DB_USER:-${POSTGRES_USER}}
-      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-${POSTGRES_PASSWORD}}
+      KC_DB_USERNAME: ${POSTGRES_USER}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
       KC_HOSTNAME: ${AUTH_DOMAIN}
       KC_HTTP_ENABLED: "true"
       KC_PROXY: edge
