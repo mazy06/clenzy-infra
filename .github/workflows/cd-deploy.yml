@@ -19,6 +19,7 @@ on:
       - 'nginx/**'
       - 'monitoring/**'
       - 'keycloak/**'
+      - 'postgres/**'
       - '.github/workflows/cd-deploy.yml'
   workflow_dispatch:
     inputs:
@@ -168,20 +169,21 @@ jobs:
             . ./.env
             set +a
 
-            # --- Bootstrap DB Keycloak ---
+            # --- Bootstrap PostgreSQL & Keycloak DB ---
+            # Toutes les connexions DB (Keycloak, pms-server) utilisent
+            # POSTGRES_USER / POSTGRES_PASSWORD — un seul couple d'identifiants.
             KEYCLOAK_DB_NAME="${KEYCLOAK_DB_NAME:-keycloak_prod}"
-            KEYCLOAK_DB_USER="${KEYCLOAK_DB_USER:-${POSTGRES_USER}}"
-            KEYCLOAK_DB_PASSWORD="${KEYCLOAK_DB_PASSWORD:-${POSTGRES_PASSWORD:-}}"
-            if [ -z "$KEYCLOAK_DB_PASSWORD" ]; then
-              echo "❌ KEYCLOAK_DB_PASSWORD/POSTGRES_PASSWORD manquant dans .env."
+            if [ -z "$POSTGRES_PASSWORD" ]; then
+              echo "❌ POSTGRES_PASSWORD manquant dans .env."
               exit 1
             fi
-            KEYCLOAK_DB_NAME_LIT=$(printf '%s' "${KEYCLOAK_DB_NAME}" | sed "s/'/''/g")
-            KEYCLOAK_DB_NAME_IDENT=$(printf '%s' "${KEYCLOAK_DB_NAME}" | sed 's/"/""/g')
-            KEYCLOAK_DB_USER_LIT=$(printf '%s' "${KEYCLOAK_DB_USER}" | sed "s/'/''/g")
-            KEYCLOAK_DB_USER_IDENT=$(printf '%s' "${KEYCLOAK_DB_USER}" | sed 's/"/""/g')
-            KEYCLOAK_DB_PASSWORD_LIT=$(printf '%s' "${KEYCLOAK_DB_PASSWORD}" | sed "s/'/''/g")
-            echo "🗄️  Vérification base Keycloak (${KEYCLOAK_DB_NAME})..."
+            PG_USER_LIT=$(printf '%s' "${POSTGRES_USER}" | sed "s/'/''/g")
+            PG_USER_IDENT=$(printf '%s' "${POSTGRES_USER}" | sed 's/"/""/g')
+            PG_PASSWORD_LIT=$(printf '%s' "${POSTGRES_PASSWORD}" | sed "s/'/''/g")
+            KC_DB_NAME_LIT=$(printf '%s' "${KEYCLOAK_DB_NAME}" | sed "s/'/''/g")
+            KC_DB_NAME_IDENT=$(printf '%s' "${KEYCLOAK_DB_NAME}" | sed 's/"/""/g')
+
+            echo "🗄️  Démarrage de PostgreSQL..."
             docker compose -f docker-compose.prod.yml --env-file .env up -d postgres
 
             ATTEMPTS=0
@@ -195,41 +197,48 @@ jobs:
               sleep 2
             done
 
-            echo "👤 Synchronisation du rôle DB Keycloak (${KEYCLOAK_DB_USER})..."
-            ROLE_EXISTS=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-              psql -U "${POSTGRES_USER}" -d postgres -tAc \
-              "SELECT 1 FROM pg_roles WHERE rolname='${KEYCLOAK_DB_USER_LIT}'")
-            if [ "$ROLE_EXISTS" = "1" ]; then
-              docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-                psql -U "${POSTGRES_USER}" -d postgres -v ON_ERROR_STOP=1 \
-                -c "ALTER ROLE \"${KEYCLOAK_DB_USER_IDENT}\" WITH LOGIN PASSWORD '${KEYCLOAK_DB_PASSWORD_LIT}';"
-            else
-              docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-                psql -U "${POSTGRES_USER}" -d postgres -v ON_ERROR_STOP=1 \
-                -c "CREATE ROLE \"${KEYCLOAK_DB_USER_IDENT}\" LOGIN PASSWORD '${KEYCLOAK_DB_PASSWORD_LIT}';"
-            fi
+            # Synchronise le mot de passe du user principal avec la valeur du .env.
+            # Résout le problème du volume persistant qui conserve l'ancien mot de passe.
+            echo "🔑 Synchronisation du mot de passe PostgreSQL (${POSTGRES_USER})..."
+            docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
+              psql -U "${POSTGRES_USER}" -d postgres -v ON_ERROR_STOP=1 \
+              -c "ALTER USER \"${PG_USER_IDENT}\" WITH PASSWORD '${PG_PASSWORD_LIT}';"
 
+            # Vérification que le mot de passe fonctionne (connexion TCP)
+            AUTH_OK=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T \
+              -e PGPASSWORD="${POSTGRES_PASSWORD}" postgres \
+              psql -h localhost -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -tAc "SELECT 1" 2>/dev/null || true)
+            if [ "$AUTH_OK" != "1" ]; then
+              echo "❌ Échec de la synchronisation du mot de passe PostgreSQL."
+              exit 1
+            fi
+            echo "   ✅ Mot de passe PostgreSQL synchronisé."
+
+            # --- Bootstrap base Keycloak ---
+            echo "🗄️  Vérification base Keycloak (${KEYCLOAK_DB_NAME})..."
             DB_EXISTS=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
               psql -U "${POSTGRES_USER}" -d postgres -tAc \
-              "SELECT 1 FROM pg_database WHERE datname='${KEYCLOAK_DB_NAME_LIT}'")
+              "SELECT 1 FROM pg_database WHERE datname='${KC_DB_NAME_LIT}'")
             if [ "$DB_EXISTS" != "1" ]; then
               echo "➕ Création de la base ${KEYCLOAK_DB_NAME}..."
               docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
                 psql -U "${POSTGRES_USER}" -d postgres -v ON_ERROR_STOP=1 \
-                -c "CREATE DATABASE \"${KEYCLOAK_DB_NAME_IDENT}\" OWNER \"${KEYCLOAK_DB_USER_IDENT}\";"
+                -c "CREATE DATABASE \"${KC_DB_NAME_IDENT}\" OWNER \"${PG_USER_IDENT}\";"
             fi
 
             docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
               psql -U "${POSTGRES_USER}" -d postgres -v ON_ERROR_STOP=1 \
-              -c "GRANT ALL PRIVILEGES ON DATABASE \"${KEYCLOAK_DB_NAME_IDENT}\" TO \"${KEYCLOAK_DB_USER_IDENT}\";"
+              -c "GRANT ALL PRIVILEGES ON DATABASE \"${KC_DB_NAME_IDENT}\" TO \"${PG_USER_IDENT}\";"
 
-            AUTH_OK=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T \
-              -e PGPASSWORD="${KEYCLOAK_DB_PASSWORD}" postgres \
-              psql -h localhost -U "${KEYCLOAK_DB_USER}" -d "${KEYCLOAK_DB_NAME}" -tAc "SELECT 1" 2>/dev/null || true)
-            if [ "$AUTH_OK" != "1" ]; then
-              echo "❌ Auth DB Keycloak invalide (${KEYCLOAK_DB_USER}@${KEYCLOAK_DB_NAME})."
+            # Vérification auth sur la base Keycloak
+            AUTH_KC=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T \
+              -e PGPASSWORD="${POSTGRES_PASSWORD}" postgres \
+              psql -h localhost -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME}" -tAc "SELECT 1" 2>/dev/null || true)
+            if [ "$AUTH_KC" != "1" ]; then
+              echo "❌ Auth DB Keycloak invalide (${POSTGRES_USER}@${KEYCLOAK_DB_NAME})."
               exit 1
             fi
+            echo "   ✅ Base Keycloak OK."
 
             # --- Backup avant déploiement ---
             echo "💾 Backup pré-déploiement..."
