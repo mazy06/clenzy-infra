@@ -47,7 +47,7 @@ jobs:
       VPS_USER: ${{ secrets.VPS_USER != '' && secrets.VPS_USER || vars.VPS_USER }}
       VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
       GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
-      VPS_INFRA_DIR: ${{ vars.VPS_INFRA_DIR != '' && vars.VPS_INFRA_DIR || '/opt/clenzy-infra' }}
+      VPS_INFRA_DIR: ${{ vars.VPS_INFRA_DIR }}
 
     steps:
       - name: Checkout infrastructure
@@ -92,6 +92,9 @@ jobs:
             echo ""
 
             INFRA_DIR="${{ env.VPS_INFRA_DIR }}"
+            if [ -z "$INFRA_DIR" ]; then
+              INFRA_DIR="$HOME/clenzy-infra"
+            fi
             REPO_URL="https://github.com/${{ github.repository }}.git"
 
             if [ ! -d "$INFRA_DIR/.git" ]; then
