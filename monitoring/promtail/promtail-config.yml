@@ -26,13 +26,16 @@ scrape_configs:
       - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
         target_label: 'service'
     pipeline_stages:
-      # Extraction des champs JSON pour les logs Spring Boot
-      - json:
-          expressions:
-            level: level
-            logger: logger_name
-            message: message
-            thread: thread_name
-      - labels:
-          level:
-          logger:
+      # Parser JSON uniquement pour les logs Spring Boot (pms-server)
+      - match:
+          selector: '{service="pms-server"}'
+          stages:
+            - json:
+                expressions:
+                  level: level
+                  logger: logger_name
+                  message: message
+                  thread: thread_name
+            - labels:
+                level:
+                logger:

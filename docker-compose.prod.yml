@@ -328,6 +328,7 @@ services:
       - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       - prometheus
+      - loki
     networks:
       - clenzy-network
 
