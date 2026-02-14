@@ -334,7 +334,7 @@ services:
 
   # Loki - Aggregation de logs
   loki:
-    image: grafana/loki:3.6.5
+    image: grafana/loki:3.5.10
     container_name: clenzy-loki-prod
     restart: unless-stopped
     volumes:
@@ -353,7 +353,7 @@ services:
 
   # Promtail - Collecte de logs vers Loki
   promtail:
-    image: grafana/promtail:3.6.5
+    image: grafana/promtail:3.5.10
     container_name: clenzy-promtail-prod
     restart: unless-stopped
     environment:
