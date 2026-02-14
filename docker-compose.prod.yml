@@ -214,7 +214,9 @@ services:
       KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET}
       KEYCLOAK_REALM: clenzy
       JWT_SECRET: ${JWT_SECRET}
-      SPRING_REDIS_HOST: clenzy-redis
+      # Use the Compose service name by default (Docker DNS): `redis`.
+      # Override via .env if needed.
+      SPRING_REDIS_HOST: ${SPRING_REDIS_HOST:-redis}
       SPRING_REDIS_PORT: 6379
       SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       # Stripe
