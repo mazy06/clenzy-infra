@@ -10,6 +10,9 @@ version: '3.8'
 #   - app.clenzy.fr     → PMS Frontend
 #   - app.clenzy.fr/api → PMS Backend (Spring Boot)
 #   - auth.clenzy.fr    → Keycloak
+#   - monitoring.clenzy.fr  → Grafana
+#   - prometheus.clenzy.fr  → Prometheus (basic auth)
+#   - kafka.clenzy.fr       → Kafka UI (basic auth)
 
 services:
 
@@ -24,8 +27,11 @@ services:
       DOMAIN: ${DOMAIN}
       APP_DOMAIN: ${APP_DOMAIN}
       AUTH_DOMAIN: ${AUTH_DOMAIN}
+      MONITORING_DOMAIN: ${MONITORING_DOMAIN:-monitoring.clenzy.fr}
+      PROMETHEUS_DOMAIN: ${PROMETHEUS_DOMAIN:-prometheus.clenzy.fr}
+      KAFKA_UI_DOMAIN: ${KAFKA_UI_DOMAIN:-kafka.clenzy.fr}
       CERTBOT_CERT_NAME: ${CERTBOT_CERT_NAME:-${DOMAIN}}
-      NGINX_ENVSUBST_FILTER: ^(DOMAIN|APP_DOMAIN|AUTH_DOMAIN|CERTBOT_CERT_NAME)$
+      NGINX_ENVSUBST_FILTER: ^(DOMAIN|APP_DOMAIN|AUTH_DOMAIN|MONITORING_DOMAIN|PROMETHEUS_DOMAIN|KAFKA_UI_DOMAIN|CERTBOT_CERT_NAME)$
       NGINX_ENVSUBST_TEMPLATE_DIR: /etc/nginx/templates
       NGINX_ENVSUBST_TEMPLATE_SUFFIX: .template
       NGINX_ENVSUBST_OUTPUT_DIR: /etc/nginx
@@ -34,6 +40,7 @@ services:
       - "443:443"
     volumes:
       - ./nginx/nginx.conf.template:/etc/nginx/templates/nginx.conf.template:ro
+      - ./nginx/.htpasswd:/etc/nginx/.htpasswd:ro
       - ./nginx/ssl:/etc/nginx/ssl:ro
       - certbot-webroot:/var/www/certbot:ro
       - certbot-certs:/etc/letsencrypt:ro
@@ -42,6 +49,8 @@ services:
       - pms-client
       - pms-server
       - keycloak
+      - grafana
+      - kafka-ui
     networks:
       - clenzy-network
 
@@ -181,6 +190,20 @@ services:
       timeout: 10s
       retries: 20
       start_period: 90s
+    networks:
+      - clenzy-network
+
+  # Kafka UI (monitoring des topics)
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: clenzy-kafka-ui-prod
+    restart: unless-stopped
+    environment:
+      KAFKA_CLUSTERS_0_NAME: clenzy-prod
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: clenzy-kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
     networks:
       - clenzy-network
 

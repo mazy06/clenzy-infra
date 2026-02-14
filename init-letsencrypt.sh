@@ -28,6 +28,9 @@ source .env
 DOMAINS="${DOMAIN:-clenzy.fr}"
 APP_DOM="${APP_DOMAIN:-app.clenzy.fr}"
 AUTH_DOM="${AUTH_DOMAIN:-auth.clenzy.fr}"
+MONITORING_DOM="${MONITORING_DOMAIN:-monitoring.clenzy.fr}"
+PROMETHEUS_DOM="${PROMETHEUS_DOMAIN:-prometheus.clenzy.fr}"
+KAFKA_UI_DOM="${KAFKA_UI_DOMAIN:-kafka.clenzy.fr}"
 CERTBOT_CERT_NAME="${CERTBOT_CERT_NAME:-${DOMAINS}}"
 
 # Email pour les notifications Let's Encrypt (expiration, etc.)
@@ -35,7 +38,7 @@ EMAIL="${LETSENCRYPT_EMAIL:-admin@${DOMAINS}}"
 
 echo "=== Initialisation Let's Encrypt ==="
 echo ""
-echo "Domaines : ${DOMAINS}, www.${DOMAINS}, ${APP_DOM}, ${AUTH_DOM}"
+echo "Domaines : ${DOMAINS}, www.${DOMAINS}, ${APP_DOM}, ${AUTH_DOM}, ${MONITORING_DOM}, ${PROMETHEUS_DOM}, ${KAFKA_UI_DOM}"
 echo "Cert Name: ${CERTBOT_CERT_NAME}"
 echo "Email    : ${EMAIL}"
 echo ""
@@ -78,6 +81,9 @@ docker compose -f docker-compose.prod.yml --env-file .env run --rm --entrypoint 
     -d www.${DOMAINS} \
     -d ${APP_DOM} \
     -d ${AUTH_DOM} \
+    -d ${MONITORING_DOM} \
+    -d ${PROMETHEUS_DOM} \
+    -d ${KAFKA_UI_DOM} \
     --rsa-key-size 4096 \
     --agree-tos \
     --no-eff-email \
