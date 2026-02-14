@@ -20,6 +20,10 @@ http {
 
     access_log /var/log/nginx/access.log main;
 
+    # Docker embedded DNS for dynamic upstream name resolution.
+    resolver 127.0.0.11 valid=10s ipv6=off;
+    resolver_timeout 5s;
+
     # Performance
     sendfile on;
     tcp_nopush on;
@@ -232,7 +236,8 @@ http {
         location / {
             limit_req zone=auth burst=10 nodelay;
 
-            proxy_pass http://keycloak;
+            set $keycloak_upstream http://clenzy-keycloak:8080;
+            proxy_pass $keycloak_upstream;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
