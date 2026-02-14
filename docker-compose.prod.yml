@@ -141,6 +141,7 @@ services:
       KC_HTTP_ENABLED: "true"
       KC_PROXY: edge
       KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
     depends_on:
       postgres:
         condition: service_healthy
