@@ -122,14 +122,9 @@ jobs:
               if [ -n "${{ env.PROD_ENV_FILE_B64 }}" ]; then
                 echo "📝 Création de .env depuis secret PROD_ENV_FILE_B64..."
                 printf '%s' "${{ env.PROD_ENV_FILE_B64 }}" | base64 -d > .env
-              elif [ -n "${{ env.PROD_ENV_FILE }}" ]; then
-                echo "📝 Création de .env depuis secret PROD_ENV_FILE..."
-                cat > .env << 'EOF'
-${{ env.PROD_ENV_FILE }}
-EOF
               else
                 echo "❌ Fichier .env absent sur le VPS et aucun secret de bootstrap trouvé."
-                echo "   Ajouter PROD_ENV_FILE_B64 (recommandé) ou PROD_ENV_FILE dans l'environnement GitHub 'production'."
+                echo "   Ajouter PROD_ENV_FILE_B64 dans l'environnement GitHub 'production'."
                 exit 1
               fi
               chmod 600 .env
