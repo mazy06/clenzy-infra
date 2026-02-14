@@ -109,7 +109,8 @@ http {
     # LANDING PAGE — clenzy.fr / www.clenzy.fr
     # ==========================================
     server {
-        listen 443 ssl http2;
+        listen 443 ssl;
+        http2 on;
         server_name ${DOMAIN} www.${DOMAIN};
 
         # SSL — Let's Encrypt (prod) ou auto-signe (dev)
@@ -157,7 +158,8 @@ http {
     # PMS APP — app.clenzy.fr
     # ==========================================
     server {
-        listen 443 ssl http2;
+        listen 443 ssl;
+        http2 on;
         server_name ${APP_DOMAIN};
 
         # SSL
@@ -223,7 +225,8 @@ http {
     # KEYCLOAK AUTH — auth.clenzy.fr
     # ==========================================
     server {
-        listen 443 ssl http2;
+        listen 443 ssl;
+        http2 on;
         server_name ${AUTH_DOMAIN};
 
         # SSL
@@ -275,7 +278,8 @@ http {
     # GRAFANA MONITORING — monitoring.clenzy.fr
     # ==========================================
     server {
-        listen 443 ssl http2;
+        listen 443 ssl;
+        http2 on;
         server_name ${MONITORING_DOMAIN};
 
         # SSL
@@ -312,7 +316,8 @@ http {
     # PROMETHEUS — prometheus.clenzy.fr
     # ==========================================
     server {
-        listen 443 ssl http2;
+        listen 443 ssl;
+        http2 on;
         server_name ${PROMETHEUS_DOMAIN};
 
         # SSL
@@ -347,7 +352,8 @@ http {
     # KAFKA UI — kafka.clenzy.fr
     # ==========================================
     server {
-        listen 443 ssl http2;
+        listen 443 ssl;
+        http2 on;
         server_name ${KAFKA_UI_DOMAIN};
 
         # SSL
