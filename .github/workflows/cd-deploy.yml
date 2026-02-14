@@ -5,6 +5,9 @@
 # Déclenché :
 #   - Automatiquement quand on push/merge sur la branche 'production'
 #   - Manuellement via workflow_dispatch
+#   - À distance via repository_dispatch (depuis les repos applicatifs)
+# Note: trigger via push requires matching one of the configured paths below.
+# Note: updating GitHub environment secrets/variables does not trigger this workflow automatically.
 
 name: CD Deploy
 
@@ -32,28 +35,64 @@ on:
         required: false
         default: ''
         type: string
+  repository_dispatch:
+    types:
+      - deploy-landingpage
+      - deploy-clenzy-frontend
+      - deploy-clenzy-backend
+      - deploy-service
 
 permissions:
   contents: read
-
 jobs:
   deploy:
     name: Deploy Infrastructure
     runs-on: ubuntu-latest
     environment: production
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST != '' && secrets.VPS_HOST || vars.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER != '' && secrets.VPS_USER || vars.VPS_USER }}
+      VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+      GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+      PROD_ENV_FILE: ${{ secrets.PROD_ENV_FILE }}
+      PROD_ENV_FILE_B64: ${{ secrets.PROD_ENV_FILE_B64 }}
+      VPS_INFRA_DIR: ${{ vars.VPS_INFRA_DIR }}
 
     steps:
       - name: Checkout infrastructure
         uses: actions/checkout@v4
 
+      - name: Validate required deployment secrets
+        run: |
+          set -e
+          missing=0
+
+          for key in VPS_HOST VPS_USER; do
+            if [ -z "${!key}" ]; then
+              echo "❌ Valeur manquante: $key (secret OU variable, repo/environnement production)"
+              missing=1
+            fi
+          done
+
+          for key in VPS_SSH_KEY GHCR_TOKEN; do
+            if [ -z "${!key}" ]; then
+              echo "❌ Secret manquant: $key (repo/environnement production)"
+              missing=1
+            fi
+          done
+
+          if [ "$missing" -eq 1 ]; then
+            echo "Configurer les secrets GitHub Actions puis relancer le workflow."
+            exit 1
+          fi
+
       - name: Deploy to VPS via SSH
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
+          host: ${{ env.VPS_HOST }}
+          username: ${{ env.VPS_USER }}
+          key: ${{ env.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT || 22 }}
-          script_stop: true
           script: |
             set -e
             echo "=========================================="
@@ -61,17 +100,41 @@ jobs:
             echo "=========================================="
             echo ""
 
-            INFRA_DIR="/opt/clenzy-infra"
+            INFRA_DIR="${{ env.VPS_INFRA_DIR }}"
+            if [ -z "$INFRA_DIR" ]; then
+              INFRA_DIR="$HOME/clenzy-infra"
+            fi
+            REPO_URL="https://github.com/${{ github.repository }}.git"
+
+            if [ ! -d "$INFRA_DIR/.git" ]; then
+              echo "📁 Dossier infra absent, bootstrap du repo..."
+              mkdir -p "$(dirname "$INFRA_DIR")"
+              git clone "$REPO_URL" "$INFRA_DIR"
+            fi
+
             cd "$INFRA_DIR"
 
             # --- Authentification GHCR ---
             echo "🔐 Connexion au GitHub Container Registry..."
-            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ github.repository_owner }} --password-stdin
+            echo "${{ env.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ github.repository_owner }} --password-stdin
 
             # --- Mise à jour du repo infra ---
             echo "📥 Mise à jour du repo infrastructure..."
             git fetch origin production
             git reset --hard origin/production
+
+            # --- Provisioning .env ---
+            if [ ! -f ".env" ]; then
+              if [ -n "${{ env.PROD_ENV_FILE_B64 }}" ]; then
+                echo "📝 Création de .env depuis secret PROD_ENV_FILE_B64..."
+                printf '%s' "${{ env.PROD_ENV_FILE_B64 }}" | base64 -d > .env
+              else
+                echo "❌ Fichier .env absent sur le VPS et aucun secret de bootstrap trouvé."
+                echo "   Ajouter PROD_ENV_FILE_B64 dans l'environnement GitHub 'production'."
+                exit 1
+              fi
+              chmod 600 .env
+            fi
 
             # --- Backup avant déploiement ---
             echo "💾 Backup pré-déploiement..."
@@ -79,8 +142,8 @@ jobs:
               bash ./backup/backup.sh --env prod --db-only 2>/dev/null || echo "⚠️  Backup ignoré (base non disponible)"
             fi
 
-            DEPLOY_MODE="${{ github.event.inputs.deploy_mode || 'update' }}"
-            SERVICES="${{ github.event.inputs.services }}"
+            DEPLOY_MODE="${{ github.event.client_payload.deploy_mode || github.event.inputs.deploy_mode || 'update' }}"
+            SERVICES="${{ github.event.client_payload.services || github.event.client_payload.service || github.event.inputs.services || '' }}"
 
             if [ "$DEPLOY_MODE" = "full-rebuild" ]; then
               echo "🔄 Rebuild complet de tous les services..."
