@@ -30,6 +30,14 @@ on:
         options:
           - update
           - full-rebuild
+      force_env_sync:
+        description: 'Forcer la synchronisation du .env depuis le secret PROD_ENV_FILE_B64 (recommandé si changement de secrets)'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
       services:
         description: 'Services à déployer (vide = tous)'
         required: false
@@ -124,16 +132,35 @@ jobs:
             git reset --hard origin/production
 
             # --- Provisioning .env ---
-            if [ ! -f ".env" ]; then
-              if [ -n "${{ env.PROD_ENV_FILE_B64 }}" ]; then
-                echo "📝 Création de .env depuis secret PROD_ENV_FILE_B64..."
-                printf '%s' "${{ env.PROD_ENV_FILE_B64 }}" | base64 -d > .env
-              else
-                echo "❌ Fichier .env absent sur le VPS et aucun secret de bootstrap trouvé."
-                echo "   Ajouter PROD_ENV_FILE_B64 dans l'environnement GitHub 'production'."
+            FORCE_ENV_SYNC="${{ github.event.client_payload.force_env_sync || github.event.inputs.force_env_sync || 'false' }}"
+            if [ "$FORCE_ENV_SYNC" = "true" ]; then
+              if [ -z "${{ env.PROD_ENV_FILE_B64 }}" ]; then
+                echo "❌ FORCE_ENV_SYNC=true mais secret PROD_ENV_FILE_B64 absent."
                 exit 1
               fi
+              if [ -f ".env" ]; then
+                ts="$(date +%Y%m%d-%H%M%S)"
+                cp -f .env ".env.bak.${ts}"
+                chmod 600 ".env.bak.${ts}" || true
+                echo "💾 Backup .env -> .env.bak.${ts}"
+              fi
+              echo "📝 Synchronisation forcée de .env depuis secret PROD_ENV_FILE_B64..."
+              umask 077
+              printf '%s' "${{ env.PROD_ENV_FILE_B64 }}" | base64 -d > .env
               chmod 600 .env
+            else
+              if [ ! -f ".env" ]; then
+                if [ -n "${{ env.PROD_ENV_FILE_B64 }}" ]; then
+                  echo "📝 Création de .env depuis secret PROD_ENV_FILE_B64..."
+                  umask 077
+                  printf '%s' "${{ env.PROD_ENV_FILE_B64 }}" | base64 -d > .env
+                else
+                  echo "❌ Fichier .env absent sur le VPS et aucun secret de bootstrap trouvé."
+                  echo "   Ajouter PROD_ENV_FILE_B64 dans l'environnement GitHub 'production'."
+                  exit 1
+                fi
+                chmod 600 .env
+              fi
             fi
 
             # Charge les variables .env dans le shell distant.
