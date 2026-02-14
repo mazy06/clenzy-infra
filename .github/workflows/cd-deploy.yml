@@ -47,6 +47,8 @@ jobs:
       VPS_USER: ${{ secrets.VPS_USER != '' && secrets.VPS_USER || vars.VPS_USER }}
       VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
       GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+      PROD_ENV_FILE: ${{ secrets.PROD_ENV_FILE }}
+      PROD_ENV_FILE_B64: ${{ secrets.PROD_ENV_FILE_B64 }}
       VPS_INFRA_DIR: ${{ vars.VPS_INFRA_DIR }}
 
     steps:
@@ -113,6 +115,24 @@ jobs:
             echo "📥 Mise à jour du repo infrastructure..."
             git fetch origin production
             git reset --hard origin/production
+
+            # --- Provisioning .env ---
+            if [ ! -f ".env" ]; then
+              if [ -n "${{ env.PROD_ENV_FILE_B64 }}" ]; then
+                echo "📝 Création de .env depuis secret PROD_ENV_FILE_B64..."
+                printf '%s' "${{ env.PROD_ENV_FILE_B64 }}" | base64 -d > .env
+              elif [ -n "${{ env.PROD_ENV_FILE }}" ]; then
+                echo "📝 Création de .env depuis secret PROD_ENV_FILE..."
+                cat > .env << 'EOF'
+${{ env.PROD_ENV_FILE }}
+EOF
+              else
+                echo "❌ Fichier .env absent sur le VPS et aucun secret de bootstrap trouvé."
+                echo "   Ajouter PROD_ENV_FILE_B64 (recommandé) ou PROD_ENV_FILE dans l'environnement GitHub 'production'."
+                exit 1
+              fi
+              chmod 600 .env
+            fi
 
             # --- Backup avant déploiement ---
             echo "💾 Backup pré-déploiement..."
