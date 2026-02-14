@@ -1,0 +1,439 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": false,
+      "title": "Overview (Metrics)",
+      "type": "link",
+      "url": "/d/clenzy-overview"
+    }
+  ],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "Statistiques",
+      "type": "row"
+    },
+    {
+      "title": "Erreurs (ERROR) - 1h",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "id": 1,
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [{
+        "expr": "count_over_time({service=~\"$service\"} |~ `(?i)\"level\"\\s*:\\s*\"ERROR\"|\\bERROR\\b` [$__range])",
+        "legendFormat": "Errors",
+        "refId": "A"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 10 }
+            ]
+          },
+          "noValue": "0"
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["sum"] },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value_and_name"
+      }
+    },
+    {
+      "title": "Warnings (WARN) - 1h",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "id": 2,
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [{
+        "expr": "count_over_time({service=~\"$service\"} |~ `(?i)\"level\"\\s*:\\s*\"WARN\"|\\bWARN\\b` [$__range])",
+        "legendFormat": "Warnings",
+        "refId": "A"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 },
+              { "color": "red", "value": 50 }
+            ]
+          },
+          "noValue": "0"
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["sum"] },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value_and_name"
+      }
+    },
+    {
+      "title": "Total lignes de logs - 1h",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "id": 3,
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [{
+        "expr": "count_over_time({service=~\"$service\"} [$__range])",
+        "legendFormat": "Total",
+        "refId": "A"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null }
+            ]
+          },
+          "noValue": "0"
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["sum"] },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value_and_name"
+      }
+    },
+    {
+      "title": "Volume de logs par service",
+      "type": "timeseries",
+      "gridPos": { "h": 4, "w": 12, "x": 12, "y": 1 },
+      "id": 4,
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [{
+        "expr": "sum by (service) (count_over_time({service=~\"$service\"}[1m]))",
+        "legendFormat": "{{service}}",
+        "refId": "A"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 50,
+            "stacking": { "mode": "normal" }
+          }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["sum"] }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "id": 101,
+      "title": "Erreurs et Warnings",
+      "type": "row"
+    },
+    {
+      "title": "Taux d'erreurs par service",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 6 },
+      "id": 5,
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "expr": "sum by (service) (count_over_time({service=~\"$service\"} |~ `(?i)\"level\"\\s*:\\s*\"ERROR\"|\\bERROR\\b` [1m]))",
+          "legendFormat": "ERROR {{service}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (service) (count_over_time({service=~\"$service\"} |~ `(?i)\"level\"\\s*:\\s*\"WARN\"|\\bWARN\\b` [1m]))",
+          "legendFormat": "WARN {{service}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "stacking": { "mode": "normal" }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byRegexp", "options": "ERROR.*" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byRegexp", "options": "WARN.*" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }]
+          }
+        ]
+      }
+    },
+    {
+      "title": "Logs Erreurs / Warnings",
+      "type": "logs",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 12 },
+      "id": 6,
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [{
+        "expr": "{service=~\"$service\"} |~ `(?i)\"level\"\\s*:\\s*\"(ERROR|WARN)\"|\\b(ERROR|WARN)\\b`",
+        "refId": "A"
+      }],
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true,
+        "enableLogDetails": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 },
+      "id": 102,
+      "title": "Backend (Spring Boot)",
+      "type": "row"
+    },
+    {
+      "title": "Logs Backend - clenzy-server",
+      "type": "logs",
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 23 },
+      "id": 7,
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [{
+        "expr": "{service=\"pms-server\"} | json | line_format \"{{.level}} [{{.thread_name}}] {{.logger_name}} - {{.message}}\" |~ `$search`",
+        "refId": "A"
+      }],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 35 },
+      "id": 103,
+      "title": "Keycloak (Authentification)",
+      "type": "row"
+    },
+    {
+      "title": "Logs Keycloak - auth",
+      "type": "logs",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 36 },
+      "id": 8,
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [{
+        "expr": "{service=\"keycloak\"} |~ `$search`",
+        "refId": "A"
+      }],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true,
+        "enableLogDetails": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 46 },
+      "id": 104,
+      "title": "Nginx (Reverse Proxy)",
+      "type": "row"
+    },
+    {
+      "title": "Logs Nginx - requetes HTTP",
+      "type": "logs",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 47 },
+      "id": 9,
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [{
+        "expr": "{service=\"nginx\"} |~ `$search`",
+        "refId": "A"
+      }],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none"
+      }
+    },
+    {
+      "collapsed": true,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 57 },
+      "id": 105,
+      "title": "Infrastructure (PostgreSQL, Redis, Kafka)",
+      "type": "row",
+      "panels": [
+        {
+          "title": "Logs PostgreSQL",
+          "type": "logs",
+          "gridPos": { "h": 10, "w": 24, "x": 0, "y": 58 },
+          "id": 10,
+          "datasource": { "type": "loki", "uid": "loki" },
+          "targets": [{
+            "expr": "{service=\"postgres\"} |~ `$search`",
+            "refId": "A"
+          }],
+          "options": {
+            "showTime": true,
+            "showLabels": false,
+            "wrapLogMessage": true,
+            "prettifyLogMessage": false,
+            "enableLogDetails": true,
+            "sortOrder": "Descending",
+            "dedupStrategy": "none"
+          }
+        },
+        {
+          "title": "Logs Redis",
+          "type": "logs",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 68 },
+          "id": 11,
+          "datasource": { "type": "loki", "uid": "loki" },
+          "targets": [{
+            "expr": "{service=\"redis\"} |~ `$search`",
+            "refId": "A"
+          }],
+          "options": {
+            "showTime": true,
+            "showLabels": false,
+            "wrapLogMessage": true,
+            "enableLogDetails": true,
+            "sortOrder": "Descending",
+            "dedupStrategy": "none"
+          }
+        },
+        {
+          "title": "Logs Kafka",
+          "type": "logs",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 68 },
+          "id": 12,
+          "datasource": { "type": "loki", "uid": "loki" },
+          "targets": [{
+            "expr": "{service=\"kafka\"} |~ `$search`",
+            "refId": "A"
+          }],
+          "options": {
+            "showTime": true,
+            "showLabels": false,
+            "wrapLogMessage": true,
+            "enableLogDetails": true,
+            "sortOrder": "Descending",
+            "dedupStrategy": "none"
+          }
+        }
+      ]
+    },
+    {
+      "collapsed": true,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 58 },
+      "id": 106,
+      "title": "Tous les logs (brut)",
+      "type": "row",
+      "panels": [
+        {
+          "title": "Tous les logs - Tous les services",
+          "type": "logs",
+          "gridPos": { "h": 14, "w": 24, "x": 0, "y": 59 },
+          "id": 13,
+          "datasource": { "type": "loki", "uid": "loki" },
+          "targets": [{
+            "expr": "{service=~\"$service\"} |~ `$search`",
+            "refId": "A"
+          }],
+          "options": {
+            "showTime": true,
+            "showLabels": true,
+            "showCommonLabels": false,
+            "wrapLogMessage": true,
+            "prettifyLogMessage": false,
+            "enableLogDetails": true,
+            "sortOrder": "Descending",
+            "dedupStrategy": "none"
+          }
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["clenzy", "logs", "loki"],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": true, "text": "All", "value": "$__all" },
+        "datasource": { "type": "loki", "uid": "loki" },
+        "definition": "label_values(service)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Service",
+        "multi": true,
+        "name": "service",
+        "options": [],
+        "query": "label_values(service)",
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": { "selected": false, "text": "", "value": "" },
+        "hide": 0,
+        "label": "Recherche",
+        "name": "search",
+        "options": [
+          { "selected": true, "text": "", "value": "" }
+        ],
+        "query": "",
+        "skipUrlSync": false,
+        "type": "textbox"
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {
+    "refresh_intervals": ["5s", "10s", "30s", "1m", "5m"]
+  },
+  "timezone": "Europe/Paris",
+  "title": "Clenzy PMS - Logs",
+  "uid": "clenzy-logs",
+  "version": 1
+}
