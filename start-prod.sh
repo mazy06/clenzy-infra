@@ -46,18 +46,14 @@ if [ ! -f ".env" ]; then
     exit 1
 fi
 
-# Vérification des certificats SSL
-if [ ! -f "nginx/ssl/clenzy.fr.crt" ] || [ ! -f "nginx/ssl/clenzy.fr.key" ]; then
-    echo "⚠️  Certificats SSL introuvables dans nginx/ssl/"
-    echo "   Placez vos certificats :"
-    echo "   - nginx/ssl/clenzy.fr.crt"
-    echo "   - nginx/ssl/clenzy.fr.key"
-    echo ""
-    read -p "Continuer sans SSL ? (y/N) " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        exit 1
-    fi
+source .env
+CERTBOT_CERT_NAME="${CERTBOT_CERT_NAME:-${DOMAIN:-clenzy.fr}}"
+
+# Vérification des certificats Let's Encrypt (volume Docker)
+if ! docker compose -f docker-compose.prod.yml --env-file .env run --rm --entrypoint "test -f /etc/letsencrypt/live/${CERTBOT_CERT_NAME}/fullchain.pem -a -f /etc/letsencrypt/live/${CERTBOT_CERT_NAME}/privkey.pem" certbot >/dev/null 2>&1; then
+    echo "❌ Certificats Let's Encrypt introuvables pour '${CERTBOT_CERT_NAME}'"
+    echo "   Exécuter d'abord : ./init-letsencrypt.sh"
+    exit 1
 fi
 
 # Vérification des projets (nécessaire uniquement en mode build local)

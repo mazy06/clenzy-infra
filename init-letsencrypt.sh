@@ -28,6 +28,7 @@ source .env
 DOMAINS="${DOMAIN:-clenzy.fr}"
 APP_DOM="${APP_DOMAIN:-app.clenzy.fr}"
 AUTH_DOM="${AUTH_DOMAIN:-auth.clenzy.fr}"
+CERTBOT_CERT_NAME="${CERTBOT_CERT_NAME:-${DOMAINS}}"
 
 # Email pour les notifications Let's Encrypt (expiration, etc.)
 EMAIL="${LETSENCRYPT_EMAIL:-admin@${DOMAINS}}"
@@ -35,6 +36,7 @@ EMAIL="${LETSENCRYPT_EMAIL:-admin@${DOMAINS}}"
 echo "=== Initialisation Let's Encrypt ==="
 echo ""
 echo "Domaines : ${DOMAINS}, www.${DOMAINS}, ${APP_DOM}, ${AUTH_DOM}"
+echo "Cert Name: ${CERTBOT_CERT_NAME}"
 echo "Email    : ${EMAIL}"
 echo ""
 
@@ -42,12 +44,12 @@ echo ""
 # Nginx a besoin d'un certificat pour demarrer, meme invalide
 echo "[1/4] Creation d'un certificat temporaire..."
 
-mkdir -p "$SCRIPT_DIR/certbot/conf/live/${DOMAINS}"
+mkdir -p "$SCRIPT_DIR/certbot/conf/live/${CERTBOT_CERT_NAME}"
 
 docker compose -f docker-compose.prod.yml --env-file .env run --rm --entrypoint "\
   openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
-    -keyout '/etc/letsencrypt/live/${DOMAINS}/privkey.pem' \
-    -out '/etc/letsencrypt/live/${DOMAINS}/fullchain.pem' \
+    -keyout '/etc/letsencrypt/live/${CERTBOT_CERT_NAME}/privkey.pem' \
+    -out '/etc/letsencrypt/live/${CERTBOT_CERT_NAME}/fullchain.pem' \
     -subj '/CN=localhost'" certbot
 
 echo ""
@@ -64,13 +66,14 @@ echo ""
 echo "[3/4] Demande des certificats Let's Encrypt..."
 
 docker compose -f docker-compose.prod.yml --env-file .env run --rm --entrypoint "\
-  rm -rf /etc/letsencrypt/live/${DOMAINS} && \
-  rm -rf /etc/letsencrypt/archive/${DOMAINS} && \
-  rm -rf /etc/letsencrypt/renewal/${DOMAINS}.conf" certbot
+  rm -rf /etc/letsencrypt/live/${CERTBOT_CERT_NAME} && \
+  rm -rf /etc/letsencrypt/archive/${CERTBOT_CERT_NAME} && \
+  rm -rf /etc/letsencrypt/renewal/${CERTBOT_CERT_NAME}.conf" certbot
 
 docker compose -f docker-compose.prod.yml --env-file .env run --rm --entrypoint "\
   certbot certonly --webroot -w /var/www/certbot \
     --email ${EMAIL} \
+    --cert-name ${CERTBOT_CERT_NAME} \
     -d ${DOMAINS} \
     -d www.${DOMAINS} \
     -d ${APP_DOM} \
