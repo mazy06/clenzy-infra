@@ -394,18 +394,25 @@ jobs:
                         KC_CRED_DATA="{\"hashIterations\":${KC_ITER},\"algorithm\":\"${KC_ALGO}\",\"additionalParameters\":{}}"
                         echo "   [DEBUG] secret_data: ${KC_SECRET_DATA}"
                         echo "   [DEBUG] credential_data: ${KC_CRED_DATA}"
-                        # UPDATE la credential existante
+                        # UPDATE la credential existante (afficher le resultat pour debug)
+                        echo "   [DEBUG] Execution UPDATE..."
                         docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
                           psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -c \
-                          "UPDATE credential SET secret_data='${KC_SECRET_DATA}', credential_data='${KC_CRED_DATA}' WHERE user_id='${KC_ADMIN_ID}' AND type='password';" 2>/dev/null || true
+                          "UPDATE credential SET secret_data='${KC_SECRET_DATA}', credential_data='${KC_CRED_DATA}' WHERE user_id='${KC_ADMIN_ID}' AND type='password';" 2>&1 || true
+                        # Verifier ce qui est en base apres l'UPDATE
+                        echo "   [DEBUG] Credential apres UPDATE:"
+                        docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
+                          psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -tAc \
+                          "SELECT secret_data FROM credential WHERE user_id='${KC_ADMIN_ID}' AND type='password';" 2>&1 || true
                         # Si pas de credential password, en creer une
                         CRED_COUNT=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
                           psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -tAc \
                           "SELECT count(*) FROM credential WHERE user_id='${KC_ADMIN_ID}' AND type='password';" 2>/dev/null | tr -d '[:space:]')
+                        echo "   [DEBUG] Credential count: ${CRED_COUNT}"
                         if [ "$CRED_COUNT" = "0" ]; then
                           docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
                             psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -c \
-                            "INSERT INTO credential (id, user_id, type, secret_data, credential_data, priority) VALUES (gen_random_uuid()::text, '${KC_ADMIN_ID}', 'password', '${KC_SECRET_DATA}', '${KC_CRED_DATA}', 10);" 2>/dev/null || true
+                            "INSERT INTO credential (id, user_id, type, secret_data, credential_data, priority) VALUES (gen_random_uuid()::text, '${KC_ADMIN_ID}', 'password', '${KC_SECRET_DATA}', '${KC_CRED_DATA}', 10);" 2>&1 || true
                         fi
                         # Redemarrer Keycloak pour vider le cache Infinispan des credentials
                         echo "   Redemarrage de Keycloak (flush cache)..."
@@ -426,11 +433,13 @@ jobs:
                             --server http://localhost:8080 \
                             --realm master \
                             --user "${KEYCLOAK_ADMIN}" \
-                            --password "${KEYCLOAK_ADMIN_PASSWORD}" 2>/dev/null || KC_RETRY=$?
+                            --password "${KEYCLOAK_ADMIN_PASSWORD}" 2>&1 || KC_RETRY=$?
                         if [ "$KC_RETRY" -eq 0 ]; then
                           echo "   ✅ Mot de passe admin Keycloak synchronise."
                         else
-                          echo "   ⚠️  Login admin echoue apres reset SQL + restart. Verifiez manuellement."
+                          echo "   ⚠️  Login admin echoue (code: ${KC_RETRY}). Verifiez manuellement."
+                          # Debug: afficher les logs Keycloak recents pour comprendre l'echec
+                          docker compose -f docker-compose.prod.yml --env-file .env logs --tail=30 keycloak 2>&1 | tail -20 || true
                         fi
                       else
                         echo "   ⚠️  Impossible de generer le hash PBKDF2 (openssl kdf non disponible?). Verifiez manuellement."
