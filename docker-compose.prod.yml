@@ -255,6 +255,17 @@ services:
       AIRBNB_CLIENT_SECRET: ${AIRBNB_CLIENT_SECRET:-}
       AIRBNB_REDIRECT_URI: https://${APP_DOMAIN}/api/airbnb/callback
       AIRBNB_WEBHOOK_SECRET: ${AIRBNB_WEBHOOK_SECRET:-}
+      # Mail SMTP (envoi)
+      MAIL_HOST: ${MAIL_HOST:-mail.clenzy.fr}
+      MAIL_PORT: ${MAIL_PORT:-465}
+      MAIL_USERNAME: ${MAIL_USERNAME:-info@clenzy.fr}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      # Mail IMAP (réception)
+      IMAP_HOST: ${IMAP_HOST:-mail.clenzy.fr}
+      IMAP_PORT: ${IMAP_PORT:-993}
+      IMAP_USERNAME: ${IMAP_USERNAME:-info@clenzy.fr}
+      IMAP_PASSWORD: ${IMAP_PASSWORD:-${MAIL_PASSWORD:-}}
+      IMAP_ENABLED: ${IMAP_ENABLED:-true}
       # CORS
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://${APP_DOMAIN}}
       SERVER_PORT: 8080
