@@ -325,13 +325,13 @@ jobs:
                 # de celui du .env. On le synchronise ici via kcadm.sh.
                 if [ -n "${KEYCLOAK_ADMIN}" ] && [ -n "${KEYCLOAK_ADMIN_PASSWORD}" ]; then
                   echo "🔑 Synchronisation du mot de passe admin Keycloak..."
+                  KC_LOGIN_OK=0
                   docker compose -f docker-compose.prod.yml --env-file .env exec -T keycloak \
                     /opt/keycloak/bin/kcadm.sh config credentials \
                       --server http://localhost:8080 \
                       --realm master \
                       --user "${KEYCLOAK_ADMIN}" \
-                      --password "${KEYCLOAK_ADMIN_PASSWORD}" 2>/dev/null
-                  KC_LOGIN_OK=$?
+                      --password "${KEYCLOAK_ADMIN_PASSWORD}" 2>/dev/null || KC_LOGIN_OK=$?
                   if [ "$KC_LOGIN_OK" -ne 0 ]; then
                     echo "   ⚠️  Mot de passe admin Keycloak desynchronise, reset en cours..."
                     # Reset via la base de donnees Keycloak (table user_entity du realm master)
@@ -341,8 +341,8 @@ jobs:
                     if [ -n "$KC_ADMIN_ID" ]; then
                       # Supprimer les credentials existants et forcer Keycloak a recreer l'admin
                       docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-                        psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -v ON_ERROR_STOP=1 \
-                        -c "DELETE FROM credential WHERE user_id='${KC_ADMIN_ID}';" 2>/dev/null
+                        psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" \
+                        -c "DELETE FROM credential WHERE user_id='${KC_ADMIN_ID}';" 2>/dev/null || true
                       # Redemarrer Keycloak pour qu'il detecte l'absence de credentials
                       # et recree le compte admin avec KEYCLOAK_ADMIN_PASSWORD
                       echo "   ♻️  Redemarrage de Keycloak pour appliquer le nouveau mot de passe..."
