@@ -457,6 +457,28 @@ jobs:
               fi
             fi
 
+            # --- Diagnostic des permissions (Clenzy DB) ---
+            echo ""
+            echo "🔍 Diagnostic permissions (base Clenzy)..."
+            echo "   Nombre de permissions en base :"
+            docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
+              psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -tAc \
+              "SELECT count(*) FROM permissions;" 2>/dev/null || echo "   ⚠️  Impossible de compter les permissions"
+            echo "   Permissions du role ADMIN :"
+            docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
+              psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -tAc \
+              "SELECT p.name FROM role_permissions rp JOIN permissions p ON rp.permission_id = p.id JOIN roles r ON rp.role_id = r.id WHERE r.name = 'ADMIN' AND rp.is_active = true ORDER BY p.name;" 2>/dev/null || echo "   ⚠️  Impossible de lister les permissions ADMIN"
+            echo "   Roles existants :"
+            docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
+              psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -tAc \
+              "SELECT name FROM roles ORDER BY name;" 2>/dev/null || echo "   ⚠️  Impossible de lister les roles"
+            echo "   role_permissions avec is_active NULL :"
+            docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
+              psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -tAc \
+              "SELECT count(*) FROM role_permissions WHERE is_active IS NULL;" 2>/dev/null || echo "   ⚠️  N/A"
+            echo "   Logs backend (permissions) :"
+            docker compose -f docker-compose.prod.yml --env-file .env logs --tail=50 pms-server 2>&1 | grep -iE "(Permission|Verification des permissions|creee|associee|initPermissions)" | tail -20 || echo "   (aucun log permission trouve)"
+
             echo ""
             if [ $FAILED -eq 1 ]; then
               echo "⚠️  Certains services ne sont pas en bonne santé !"
