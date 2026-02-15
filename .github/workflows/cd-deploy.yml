@@ -321,10 +321,9 @@ jobs:
                 # --- Synchronisation mot de passe admin Keycloak ---
                 # KEYCLOAK_ADMIN / KEYCLOAK_ADMIN_PASSWORD ne sont pris en compte que
                 # lors du tout premier demarrage (master realm absent).
-                # Apres ca, ces variables sont ignorees par Keycloak.
-                # Pour synchroniser le mot de passe, on utilise :
-                #   kc.sh bootstrap-admin user --username --password --no-prompt
-                # Cette commande doit etre executee avec Keycloak ARRETE.
+                # Keycloak 24 n'a pas kc.sh bootstrap-admin (disponible 25+).
+                # Methode : generer un hash PBKDF2-SHA256 via openssl sur le VPS,
+                # puis UPDATE la table credential dans PostgreSQL.
                 if [ -n "${KEYCLOAK_ADMIN}" ] && [ -n "${KEYCLOAK_ADMIN_PASSWORD}" ]; then
                   echo "🔑 Verification du mot de passe admin Keycloak..."
                   KC_LOGIN_OK=0
@@ -335,42 +334,76 @@ jobs:
                       --user "${KEYCLOAK_ADMIN}" \
                       --password "${KEYCLOAK_ADMIN_PASSWORD}" 2>/dev/null || KC_LOGIN_OK=$?
                   if [ "$KC_LOGIN_OK" -ne 0 ]; then
-                    echo "   ⚠️  Mot de passe admin desynchronise, reset via kc.sh bootstrap-admin..."
-                    # Arreter Keycloak (kc.sh bootstrap-admin requiert le serveur arrete)
-                    docker compose -f docker-compose.prod.yml --env-file .env stop keycloak
-                    sleep 5
-                    # Utiliser kc.sh bootstrap-admin user pour recreer/reset l'admin
-                    # --no-deps : ne pas toucher aux autres services (postgres tourne deja)
-                    # Le container herite du reseau docker-compose pour joindre postgres
-                    docker compose -f docker-compose.prod.yml --env-file .env run --rm --no-deps \
-                      keycloak \
-                      bootstrap-admin user \
-                        --username "${KEYCLOAK_ADMIN}" \
-                        --password "${KEYCLOAK_ADMIN_PASSWORD}" \
-                        --no-prompt 2>&1 || echo "   (bootstrap-admin peut retourner un code non-zero si l'admin existe deja)"
-                    # Redemarrer Keycloak normalement
-                    echo "   Redemarrage de Keycloak..."
-                    docker compose -f docker-compose.prod.yml --env-file .env up -d keycloak
-                    for _ in $(seq 1 40); do
-                      READY2=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T nginx \
-                        sh -lc "wget -qO- http://clenzy-keycloak:8080/health/ready" 2>/dev/null || true)
-                      if echo "$READY2" | grep -q '"status"[[:space:]]*:[[:space:]]*"UP"'; then
-                        break
+                    echo "   ⚠️  Mot de passe admin desynchronise, reset via PBKDF2 + SQL..."
+
+                    # Trouver le realm master UUID et l'admin user ID
+                    KC_MASTER_REALM_ID=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
+                      psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -tAc \
+                      "SELECT id FROM realm WHERE name='master'" 2>/dev/null | tr -d '[:space:]')
+
+                    KC_ADMIN_ID=""
+                    if [ -n "$KC_MASTER_REALM_ID" ]; then
+                      KC_ADMIN_ID=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
+                        psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -tAc \
+                        "SELECT id FROM user_entity WHERE username='${KEYCLOAK_ADMIN}' AND realm_id='${KC_MASTER_REALM_ID}'" 2>/dev/null | tr -d '[:space:]')
+                    fi
+
+                    if [ -n "$KC_ADMIN_ID" ]; then
+                      echo "   Admin user trouve (id: ${KC_ADMIN_ID})"
+                      # Generer hash PBKDF2-SHA256 via openssl sur le VPS host
+                      # 1. Salt aleatoire 16 bytes en hex
+                      KC_SALT_HEX=$(openssl rand -hex 16)
+                      # 2. Hash PBKDF2-SHA256 (sortie hex colon-separated)
+                      KC_HASH_COLON=$(openssl kdf -keylen 64 -kdfopt digest:SHA256 \
+                        -kdfopt "pass:${KEYCLOAK_ADMIN_PASSWORD}" \
+                        -kdfopt "hexsalt:${KC_SALT_HEX}" \
+                        -kdfopt iter:27500 PBKDF2 2>/dev/null || true)
+                      # 3. Convertir hex -> base64
+                      KC_HASH_B64=""
+                      KC_SALT_B64=""
+                      if [ -n "$KC_HASH_COLON" ]; then
+                        KC_HASH_HEX=$(echo "$KC_HASH_COLON" | tr -d ':[:space:]')
+                        KC_HASH_B64=$(printf '%s' "$KC_HASH_HEX" | xxd -r -p | base64 -w0)
+                        KC_SALT_B64=$(printf '%s' "$KC_SALT_HEX" | xxd -r -p | base64 -w0)
                       fi
-                      sleep 3
-                    done
-                    # Verifier que le login fonctionne maintenant
-                    KC_RETRY=0
-                    docker compose -f docker-compose.prod.yml --env-file .env exec -T keycloak \
-                      /opt/keycloak/bin/kcadm.sh config credentials \
-                        --server http://localhost:8080 \
-                        --realm master \
-                        --user "${KEYCLOAK_ADMIN}" \
-                        --password "${KEYCLOAK_ADMIN_PASSWORD}" 2>/dev/null || KC_RETRY=$?
-                    if [ "$KC_RETRY" -eq 0 ]; then
-                      echo "   ✅ Mot de passe admin Keycloak synchronise."
+
+                      if [ -n "$KC_HASH_B64" ] && [ -n "$KC_SALT_B64" ]; then
+                        echo "   Hash PBKDF2-SHA256 genere, mise a jour en base..."
+                        KC_SECRET_DATA="{\"value\":\"${KC_HASH_B64}\",\"salt\":\"${KC_SALT_B64}\"}"
+                        KC_CRED_DATA="{\"hashIterations\":27500,\"algorithm\":\"pbkdf2-sha256\",\"additionalParameters\":{}}"
+                        # UPDATE la credential existante
+                        docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
+                          psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -c \
+                          "UPDATE credential SET secret_data='${KC_SECRET_DATA}', credential_data='${KC_CRED_DATA}' WHERE user_id='${KC_ADMIN_ID}' AND type='password';" 2>/dev/null || true
+                        # Si pas de credential password, en creer une
+                        CRED_COUNT=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
+                          psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -tAc \
+                          "SELECT count(*) FROM credential WHERE user_id='${KC_ADMIN_ID}' AND type='password';" 2>/dev/null | tr -d '[:space:]')
+                        if [ "$CRED_COUNT" = "0" ]; then
+                          docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
+                            psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -c \
+                            "INSERT INTO credential (id, user_id, type, secret_data, credential_data, priority) VALUES (gen_random_uuid()::text, '${KC_ADMIN_ID}', 'password', '${KC_SECRET_DATA}', '${KC_CRED_DATA}', 10);" 2>/dev/null || true
+                        fi
+                        # Verifier login apres reset
+                        echo "   Verification du login admin..."
+                        sleep 2
+                        KC_RETRY=0
+                        docker compose -f docker-compose.prod.yml --env-file .env exec -T keycloak \
+                          /opt/keycloak/bin/kcadm.sh config credentials \
+                            --server http://localhost:8080 \
+                            --realm master \
+                            --user "${KEYCLOAK_ADMIN}" \
+                            --password "${KEYCLOAK_ADMIN_PASSWORD}" 2>/dev/null || KC_RETRY=$?
+                        if [ "$KC_RETRY" -eq 0 ]; then
+                          echo "   ✅ Mot de passe admin Keycloak synchronise."
+                        else
+                          echo "   ⚠️  Login admin echoue apres reset SQL. Verifiez manuellement."
+                        fi
+                      else
+                        echo "   ⚠️  Impossible de generer le hash PBKDF2 (openssl kdf non disponible?). Verifiez manuellement."
+                      fi
                     else
-                      echo "   ⚠️  Reset admin Keycloak echoue. Verifiez manuellement."
+                      echo "   ⚠️  Utilisateur admin non trouve en base Keycloak."
                     fi
                   else
                     echo "   ✅ Mot de passe admin Keycloak OK."
