@@ -310,8 +310,9 @@ jobs:
               echo "🔎 Vérification readiness HTTP de Keycloak..."
               KEYCLOAK_READY=0
               for _ in $(seq 1 30); do
-                READY_PAYLOAD=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T keycloak \
-                  sh -c "wget -qO- http://localhost:8080/health/ready" 2>/dev/null || true)
+                # Utiliser pms-server (qui a wget via Eclipse Temurin) car l'image Keycloak UBI est minimaliste
+                READY_PAYLOAD=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T pms-server \
+                  sh -c "wget -qO- http://clenzy-keycloak:8080/health/ready" 2>/dev/null || true)
                 if echo "$READY_PAYLOAD" | grep -q '"status"[[:space:]]*:[[:space:]]*"UP"'; then
                   KEYCLOAK_READY=1
                   break
@@ -419,8 +420,8 @@ jobs:
                         echo "   Redemarrage de Keycloak (flush cache)..."
                         docker compose -f docker-compose.prod.yml --env-file .env restart keycloak
                         for _ in $(seq 1 40); do
-                          KC_READY2=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T keycloak \
-                            sh -c "wget -qO- http://localhost:8080/health/ready" 2>/dev/null || true)
+                          KC_READY2=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T pms-server \
+                            sh -c "wget -qO- http://clenzy-keycloak:8080/health/ready" 2>/dev/null || true)
                           if echo "$KC_READY2" | grep -q '"status"[[:space:]]*:[[:space:]]*"UP"'; then
                             break
                           fi
