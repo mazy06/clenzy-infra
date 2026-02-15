@@ -320,11 +320,13 @@ jobs:
 
                 # --- Synchronisation mot de passe admin Keycloak ---
                 # KEYCLOAK_ADMIN / KEYCLOAK_ADMIN_PASSWORD ne sont pris en compte que
-                # lors de la toute premiere creation du compte admin. Si le volume
-                # PostgreSQL existe deja, le mot de passe en base peut etre different
-                # de celui du .env. On le synchronise ici via kcadm.sh.
+                # lors du tout premier demarrage (master realm absent).
+                # Apres ca, ces variables sont ignorees par Keycloak.
+                # Pour synchroniser le mot de passe, on utilise :
+                #   kc.sh bootstrap-admin user --username --password --no-prompt
+                # Cette commande doit etre executee avec Keycloak ARRETE.
                 if [ -n "${KEYCLOAK_ADMIN}" ] && [ -n "${KEYCLOAK_ADMIN_PASSWORD}" ]; then
-                  echo "🔑 Synchronisation du mot de passe admin Keycloak..."
+                  echo "🔑 Verification du mot de passe admin Keycloak..."
                   KC_LOGIN_OK=0
                   docker compose -f docker-compose.prod.yml --env-file .env exec -T keycloak \
                     /opt/keycloak/bin/kcadm.sh config credentials \
@@ -333,48 +335,42 @@ jobs:
                       --user "${KEYCLOAK_ADMIN}" \
                       --password "${KEYCLOAK_ADMIN_PASSWORD}" 2>/dev/null || KC_LOGIN_OK=$?
                   if [ "$KC_LOGIN_OK" -ne 0 ]; then
-                    echo "   ⚠️  Mot de passe admin Keycloak desynchronise, reset en cours..."
-                    # Trouver le realm_id du master realm puis l'admin user
-                    KC_MASTER_REALM_ID=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-                      psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -tAc \
-                      "SELECT id FROM realm WHERE name='master'" 2>/dev/null | tr -d '[:space:]')
-                    echo "   Master realm_id: ${KC_MASTER_REALM_ID:-NOT FOUND}"
-
-                    if [ -n "$KC_MASTER_REALM_ID" ]; then
-                      KC_ADMIN_ID=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-                        psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -tAc \
-                        "SELECT id FROM user_entity WHERE username='${KEYCLOAK_ADMIN}' AND realm_id='${KC_MASTER_REALM_ID}'" 2>/dev/null | tr -d '[:space:]')
-                    else
-                      # Fallback: chercher sans filtre realm
-                      KC_ADMIN_ID=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-                        psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -tAc \
-                        "SELECT id FROM user_entity WHERE username='${KEYCLOAK_ADMIN}' ORDER BY created_timestamp LIMIT 1" 2>/dev/null | tr -d '[:space:]')
-                    fi
-                    echo "   Admin user_id: ${KC_ADMIN_ID:-NOT FOUND}"
-
-                    if [ -n "$KC_ADMIN_ID" ]; then
-                      # Supprimer les credentials existants pour forcer Keycloak a les recreer
-                      docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-                        psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" \
-                        -c "DELETE FROM credential WHERE user_id='${KC_ADMIN_ID}';" 2>/dev/null || true
-                      echo "   Credentials supprimees, redemarrage de Keycloak..."
-                      docker compose -f docker-compose.prod.yml --env-file .env restart keycloak
-                      # Attendre que Keycloak soit pret
-                      for _ in $(seq 1 30); do
-                        READY2=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T nginx \
-                          sh -lc "wget -qO- http://clenzy-keycloak:8080/health/ready" 2>/dev/null || true)
-                        if echo "$READY2" | grep -q '"status"[[:space:]]*:[[:space:]]*"UP"'; then
-                          break
-                        fi
-                        sleep 3
-                      done
+                    echo "   ⚠️  Mot de passe admin desynchronise, reset via kc.sh bootstrap-admin..."
+                    # Arreter Keycloak (kc.sh bootstrap-admin requiert le serveur arrete)
+                    docker compose -f docker-compose.prod.yml --env-file .env stop keycloak
+                    sleep 5
+                    # Utiliser kc.sh bootstrap-admin user pour recreer/reset l'admin
+                    # --no-deps : ne pas toucher aux autres services (postgres tourne deja)
+                    # Le container herite du reseau docker-compose pour joindre postgres
+                    docker compose -f docker-compose.prod.yml --env-file .env run --rm --no-deps \
+                      keycloak \
+                      bootstrap-admin user \
+                        --username "${KEYCLOAK_ADMIN}" \
+                        --password "${KEYCLOAK_ADMIN_PASSWORD}" \
+                        --no-prompt 2>&1 || echo "   (bootstrap-admin peut retourner un code non-zero si l'admin existe deja)"
+                    # Redemarrer Keycloak normalement
+                    echo "   Redemarrage de Keycloak..."
+                    docker compose -f docker-compose.prod.yml --env-file .env up -d keycloak
+                    for _ in $(seq 1 40); do
+                      READY2=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T nginx \
+                        sh -lc "wget -qO- http://clenzy-keycloak:8080/health/ready" 2>/dev/null || true)
+                      if echo "$READY2" | grep -q '"status"[[:space:]]*:[[:space:]]*"UP"'; then
+                        break
+                      fi
+                      sleep 3
+                    done
+                    # Verifier que le login fonctionne maintenant
+                    KC_RETRY=0
+                    docker compose -f docker-compose.prod.yml --env-file .env exec -T keycloak \
+                      /opt/keycloak/bin/kcadm.sh config credentials \
+                        --server http://localhost:8080 \
+                        --realm master \
+                        --user "${KEYCLOAK_ADMIN}" \
+                        --password "${KEYCLOAK_ADMIN_PASSWORD}" 2>/dev/null || KC_RETRY=$?
+                    if [ "$KC_RETRY" -eq 0 ]; then
                       echo "   ✅ Mot de passe admin Keycloak synchronise."
                     else
-                      echo "   ⚠️  Utilisateur admin non trouve en base."
-                      echo "   Debug: tables dans la base Keycloak :"
-                      docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-                        psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -tAc \
-                        "SELECT username, realm_id FROM user_entity LIMIT 10" 2>/dev/null || true
+                      echo "   ⚠️  Reset admin Keycloak echoue. Verifiez manuellement."
                     fi
                   else
                     echo "   ✅ Mot de passe admin Keycloak OK."
