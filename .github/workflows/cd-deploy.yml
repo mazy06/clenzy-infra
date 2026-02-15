@@ -384,9 +384,19 @@ jobs:
                             psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -c \
                             "INSERT INTO credential (id, user_id, type, secret_data, credential_data, priority) VALUES (gen_random_uuid()::text, '${KC_ADMIN_ID}', 'password', '${KC_SECRET_DATA}', '${KC_CRED_DATA}', 10);" 2>/dev/null || true
                         fi
-                        # Verifier login apres reset
+                        # Redemarrer Keycloak pour vider le cache Infinispan des credentials
+                        echo "   Redemarrage de Keycloak (flush cache)..."
+                        docker compose -f docker-compose.prod.yml --env-file .env restart keycloak
+                        for _ in $(seq 1 40); do
+                          KC_READY2=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T nginx \
+                            sh -lc "wget -qO- http://clenzy-keycloak:8080/health/ready" 2>/dev/null || true)
+                          if echo "$KC_READY2" | grep -q '"status"[[:space:]]*:[[:space:]]*"UP"'; then
+                            break
+                          fi
+                          sleep 3
+                        done
+                        # Verifier login apres restart
                         echo "   Verification du login admin..."
-                        sleep 2
                         KC_RETRY=0
                         docker compose -f docker-compose.prod.yml --env-file .env exec -T keycloak \
                           /opt/keycloak/bin/kcadm.sh config credentials \
@@ -397,7 +407,7 @@ jobs:
                         if [ "$KC_RETRY" -eq 0 ]; then
                           echo "   ✅ Mot de passe admin Keycloak synchronise."
                         else
-                          echo "   ⚠️  Login admin echoue apres reset SQL. Verifiez manuellement."
+                          echo "   ⚠️  Login admin echoue apres reset SQL + restart. Verifiez manuellement."
                         fi
                       else
                         echo "   ⚠️  Impossible de generer le hash PBKDF2 (openssl kdf non disponible?). Verifiez manuellement."
