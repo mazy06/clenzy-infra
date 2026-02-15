@@ -350,15 +350,35 @@ jobs:
 
                     if [ -n "$KC_ADMIN_ID" ]; then
                       echo "   Admin user trouve (id: ${KC_ADMIN_ID})"
-                      # Generer hash PBKDF2-SHA256 via openssl sur le VPS host
-                      # 1. Salt aleatoire 16 bytes en hex
+                      # Debug: afficher le format actuel des credentials pour diagnostic
+                      echo "   [DEBUG] Credential actuelle:"
+                      docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
+                        psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -tAc \
+                        "SELECT credential_data FROM credential WHERE user_id='${KC_ADMIN_ID}' AND type='password';" 2>/dev/null || true
+                      # Lire l'algorithme et les iterations actuels
+                      KC_CURRENT_ALGO=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
+                        psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -tAc \
+                        "SELECT credential_data::json->>'algorithm' FROM credential WHERE user_id='${KC_ADMIN_ID}' AND type='password';" 2>/dev/null | tr -d '[:space:]')
+                      KC_CURRENT_ITER=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
+                        psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -tAc \
+                        "SELECT credential_data::json->>'hashIterations' FROM credential WHERE user_id='${KC_ADMIN_ID}' AND type='password';" 2>/dev/null | tr -d '[:space:]')
+                      echo "   [DEBUG] Algorithme: ${KC_CURRENT_ALGO:-inconnu}, Iterations: ${KC_CURRENT_ITER:-inconnu}"
+                      # Utiliser le meme algorithme que l'existant, sinon defaut pbkdf2-sha256
+                      KC_ALGO="${KC_CURRENT_ALGO:-pbkdf2-sha256}"
+                      KC_ITER="${KC_CURRENT_ITER:-27500}"
+                      # Mapper l'algo Keycloak vers le digest openssl
+                      case "$KC_ALGO" in
+                        pbkdf2-sha512) KC_DIGEST="SHA512" ; KC_KEYLEN=64 ;;
+                        pbkdf2-sha256) KC_DIGEST="SHA256" ; KC_KEYLEN=64 ;;
+                        *)             KC_DIGEST="SHA256" ; KC_KEYLEN=64 ; KC_ALGO="pbkdf2-sha256" ;;
+                      esac
+                      echo "   [DEBUG] Utilisation: digest=${KC_DIGEST}, iter=${KC_ITER}, keylen=${KC_KEYLEN}"
+                      # Generer hash via openssl sur le VPS host
                       KC_SALT_HEX=$(openssl rand -hex 16)
-                      # 2. Hash PBKDF2-SHA256 (sortie hex colon-separated)
-                      KC_HASH_COLON=$(openssl kdf -keylen 64 -kdfopt digest:SHA256 \
+                      KC_HASH_COLON=$(openssl kdf -keylen "$KC_KEYLEN" -kdfopt "digest:${KC_DIGEST}" \
                         -kdfopt "pass:${KEYCLOAK_ADMIN_PASSWORD}" \
                         -kdfopt "hexsalt:${KC_SALT_HEX}" \
-                        -kdfopt iter:27500 PBKDF2 2>/dev/null || true)
-                      # 3. Convertir hex -> base64
+                        -kdfopt "iter:${KC_ITER}" PBKDF2 2>/dev/null || true)
                       KC_HASH_B64=""
                       KC_SALT_B64=""
                       if [ -n "$KC_HASH_COLON" ]; then
@@ -366,11 +386,14 @@ jobs:
                         KC_HASH_B64=$(printf '%s' "$KC_HASH_HEX" | xxd -r -p | base64 -w0)
                         KC_SALT_B64=$(printf '%s' "$KC_SALT_HEX" | xxd -r -p | base64 -w0)
                       fi
+                      echo "   [DEBUG] Hash B64 length: $(echo -n "${KC_HASH_B64}" | wc -c), Salt B64: ${KC_SALT_B64}"
 
                       if [ -n "$KC_HASH_B64" ] && [ -n "$KC_SALT_B64" ]; then
-                        echo "   Hash PBKDF2-SHA256 genere, mise a jour en base..."
+                        echo "   Hash genere, mise a jour en base..."
                         KC_SECRET_DATA="{\"value\":\"${KC_HASH_B64}\",\"salt\":\"${KC_SALT_B64}\"}"
-                        KC_CRED_DATA="{\"hashIterations\":27500,\"algorithm\":\"pbkdf2-sha256\",\"additionalParameters\":{}}"
+                        KC_CRED_DATA="{\"hashIterations\":${KC_ITER},\"algorithm\":\"${KC_ALGO}\",\"additionalParameters\":{}}"
+                        echo "   [DEBUG] secret_data: ${KC_SECRET_DATA}"
+                        echo "   [DEBUG] credential_data: ${KC_CRED_DATA}"
                         # UPDATE la credential existante
                         docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
                           psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -c \
