@@ -394,21 +394,19 @@ jobs:
                         KC_CRED_DATA="{\"hashIterations\":${KC_ITER},\"algorithm\":\"${KC_ALGO}\",\"additionalParameters\":{}}"
                         echo "   [DEBUG] secret_data: ${KC_SECRET_DATA}"
                         echo "   [DEBUG] credential_data: ${KC_CRED_DATA}"
-                        # UPDATE la credential existante (afficher le resultat pour debug)
-                        echo "   [DEBUG] Execution UPDATE..."
+                        # UPDATE la credential existante
                         docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
                           psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -c \
                           "UPDATE credential SET secret_data='${KC_SECRET_DATA}', credential_data='${KC_CRED_DATA}' WHERE user_id='${KC_ADMIN_ID}' AND type='password';" 2>&1 || true
-                        # Verifier ce qui est en base apres l'UPDATE
-                        echo "   [DEBUG] Credential apres UPDATE:"
+                        # Supprimer les required_actions (ex: UPDATE_PASSWORD) qui bloquent le login
+                        echo "   Suppression des required_actions..."
                         docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-                          psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -tAc \
-                          "SELECT secret_data FROM credential WHERE user_id='${KC_ADMIN_ID}' AND type='password';" 2>&1 || true
+                          psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -c \
+                          "DELETE FROM user_required_action WHERE user_id='${KC_ADMIN_ID}';" 2>&1 || true
                         # Si pas de credential password, en creer une
                         CRED_COUNT=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
                           psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -tAc \
                           "SELECT count(*) FROM credential WHERE user_id='${KC_ADMIN_ID}' AND type='password';" 2>/dev/null | tr -d '[:space:]')
-                        echo "   [DEBUG] Credential count: ${CRED_COUNT}"
                         if [ "$CRED_COUNT" = "0" ]; then
                           docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
                             psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -c \
