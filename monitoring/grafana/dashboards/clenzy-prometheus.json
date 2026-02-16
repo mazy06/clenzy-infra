@@ -1271,6 +1271,242 @@
           }
         }
       }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 107 },
+      "id": 90,
+      "title": "Stockage Fichiers (Uploads)",
+      "type": "row"
+    },
+    {
+      "title": "Espace utilise",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 108 },
+      "id": 91,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{
+        "expr": "clenzy_storage_contact_total_bytes{job=\"clenzy-backend\"}",
+        "legendFormat": "Total",
+        "refId": "A"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "decimals": 1,
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 104857600 },
+              { "color": "red", "value": 524288000 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "textMode": "value_and_name"
+      }
+    },
+    {
+      "title": "Nombre de fichiers",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 108 },
+      "id": 92,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{
+        "expr": "clenzy_storage_contact_file_count{job=\"clenzy-backend\"}",
+        "legendFormat": "Fichiers",
+        "refId": "A"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "color": { "fixedColor": "blue", "mode": "fixed" }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "textMode": "value_and_name"
+      }
+    },
+    {
+      "title": "Utilisation disque (%)",
+      "type": "gauge",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 108 },
+      "id": 93,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{
+        "expr": "(clenzy_storage_contact_disk_total_bytes{job=\"clenzy-backend\"} - clenzy_storage_contact_disk_free_bytes{job=\"clenzy-backend\"}) / clenzy_storage_contact_disk_total_bytes{job=\"clenzy-backend\"} * 100",
+        "legendFormat": "Utilise",
+        "refId": "A"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 50 },
+              { "color": "orange", "value": 75 },
+              { "color": "red", "value": 90 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Espace libre",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 108 },
+      "id": 94,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{
+        "expr": "clenzy_storage_contact_disk_free_bytes{job=\"clenzy-backend\"}",
+        "legendFormat": "Libre",
+        "refId": "A"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "decimals": 1,
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 1073741824 },
+              { "color": "green", "value": 5368709120 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "textMode": "value_and_name"
+      }
+    },
+    {
+      "title": "Evolution stockage",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 113 },
+      "id": 95,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "clenzy_storage_contact_total_bytes{job=\"clenzy-backend\"}",
+          "legendFormat": "Taille totale",
+          "refId": "A"
+        },
+        {
+          "expr": "clenzy_storage_contact_file_count{job=\"clenzy-backend\"}",
+          "legendFormat": "Nombre de fichiers",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 15,
+            "gradientMode": "scheme",
+            "showPoints": "auto",
+            "pointSize": 5
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Taille totale" },
+            "properties": [
+              { "id": "unit", "value": "bytes" },
+              { "id": "custom.axisPlacement", "value": "left" },
+              { "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Nombre de fichiers" },
+            "properties": [
+              { "id": "unit", "value": "short" },
+              { "id": "custom.axisPlacement", "value": "right" },
+              { "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "none" },
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      }
+    },
+    {
+      "title": "Espace disque (partition)",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 113 },
+      "id": 96,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "clenzy_storage_contact_disk_total_bytes{job=\"clenzy-backend\"}",
+          "legendFormat": "Total",
+          "refId": "A"
+        },
+        {
+          "expr": "clenzy_storage_contact_disk_free_bytes{job=\"clenzy-backend\"}",
+          "legendFormat": "Libre",
+          "refId": "B"
+        },
+        {
+          "expr": "clenzy_storage_contact_disk_total_bytes{job=\"clenzy-backend\"} - clenzy_storage_contact_disk_free_bytes{job=\"clenzy-backend\"}",
+          "legendFormat": "Utilise",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "stacking": { "mode": "none" }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Total" },
+            "properties": [
+              { "id": "color", "value": { "fixedColor": "light-blue", "mode": "fixed" } },
+              { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Libre" },
+            "properties": [
+              { "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Utilise" },
+            "properties": [
+              { "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "none" },
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      }
     }
   ],
   "refresh": "30s",

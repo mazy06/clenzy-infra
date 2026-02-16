@@ -284,6 +284,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+    volumes:
+      - contact-uploads-prod:/app/uploads/contact
     networks:
       clenzy-network:
         aliases:
@@ -395,6 +397,7 @@ volumes:
   prometheus-data-prod:
   grafana-data-prod:
   loki-data-prod:
+  contact-uploads-prod:
 
 networks:
   clenzy-network:
