@@ -236,6 +236,9 @@ services:
       KEYCLOAK_CLIENT_ID: clenzy-api
       KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET}
       KEYCLOAK_REALM: clenzy
+      # Admin Keycloak (pour sync utilisateurs, reset password, etc.)
+      KEYCLOAK_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       # Use the Compose service name by default (Docker DNS): `redis`.
       # Override via .env if needed.
