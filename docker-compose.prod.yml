@@ -76,6 +76,7 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_APP_URL: https://${APP_DOMAIN:-app.clenzy.fr}
+        VITE_API_URL: https://${APP_DOMAIN:-app.clenzy.fr}
     container_name: clenzy-landing-prod
     restart: unless-stopped
     expose:
