@@ -454,31 +454,6 @@ jobs:
                   fi
                 fi
 
-                # --- Synchronisation des redirect URIs du client clenzy-web ---
-                echo "🔗 Synchronisation des redirect URIs du client clenzy-web..."
-                # Authenticate kcadm.sh (credentials may already be configured from previous step)
-                docker compose -f docker-compose.prod.yml --env-file .env exec -T keycloak \
-                  /opt/keycloak/bin/kcadm.sh config credentials \
-                    --server http://localhost:8080 \
-                    --realm master \
-                    --user "${KEYCLOAK_ADMIN}" \
-                    --password "${KEYCLOAK_ADMIN_PASSWORD}" 2>/dev/null || true
-                # Get client internal UUID
-                KC_WEB_ID=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T keycloak \
-                  /opt/keycloak/bin/kcadm.sh get clients -r clenzy --fields id,clientId 2>/dev/null \
-                  | grep -B1 '"clenzy-web"' | grep '"id"' | head -1 | sed 's/.*: *"//;s/".*//' || true)
-                if [ -n "$KC_WEB_ID" ]; then
-                  echo "   Client clenzy-web trouvé (id: ${KC_WEB_ID})"
-                  docker compose -f docker-compose.prod.yml --env-file .env exec -T keycloak \
-                    /opt/keycloak/bin/kcadm.sh update "clients/${KC_WEB_ID}" -r clenzy \
-                      -s 'redirectUris=["http://localhost:3000/*","http://localhost:3001/*","https://'"${APP_DOMAIN}"'/*"]' \
-                      -s 'webOrigins=["http://localhost:3000","http://localhost:3001","https://'"${APP_DOMAIN}"'"]' 2>/dev/null \
-                    && echo "   ✅ Redirect URIs synchronisées pour clenzy-web" \
-                    || echo "   ⚠️  Échec de la mise à jour des redirect URIs"
-                else
-                  echo "   ⚠️  Client clenzy-web non trouvé dans le realm clenzy"
-                fi
-
               else
                 echo "   ❌ keycloak readiness HTTP: KO"
                 docker compose -f docker-compose.prod.yml --env-file .env logs --tail=120 keycloak || true
