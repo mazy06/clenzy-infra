@@ -63,11 +63,13 @@
       "implicitFlowEnabled": false,
       "redirectUris": [
         "http://localhost:3000/*",
-        "http://localhost:3001/*"
+        "http://localhost:3001/*",
+        "https://app.clenzy.fr/*"
       ],
       "webOrigins": [
         "http://localhost:3000",
-        "http://localhost:3001"
+        "http://localhost:3001",
+        "https://app.clenzy.fr"
       ],
       "enabled": true
     }
