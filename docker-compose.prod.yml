@@ -286,6 +286,7 @@ services:
         condition: service_healthy
     volumes:
       - contact-uploads-prod:/app/uploads/contact
+      - template-uploads-prod:/app/uploads/templates
     networks:
       clenzy-network:
         aliases:
@@ -398,6 +399,7 @@ volumes:
   grafana-data-prod:
   loki-data-prod:
   contact-uploads-prod:
+  template-uploads-prod:
 
 networks:
   clenzy-network:

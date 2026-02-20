@@ -1,0 +1,52 @@
+name: DB Migration
+
+on:
+  workflow_dispatch:
+    inputs:
+      sql:
+        description: 'SQL to execute on the clenzy database'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    name: Run SQL Migration
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Execute SQL migration on VPS
+        uses: appleboy/ssh-action@v1
+        env:
+          SSH_HOST: ${{ secrets.VPS_HOST != '' && secrets.VPS_HOST || vars.VPS_HOST }}
+          SSH_USER: ${{ secrets.VPS_USER != '' && secrets.VPS_USER || vars.VPS_USER }}
+          INFRA_DIR_VALUE: ${{ vars.VPS_INFRA_DIR }}
+          SQL_CMD: ${{ inputs.sql }}
+        with:
+          host: ${{ env.SSH_HOST }}
+          username: ${{ env.SSH_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          envs: INFRA_DIR_VALUE,SQL_CMD
+          script: |
+            set -e
+            INFRA_DIR="${INFRA_DIR_VALUE}"
+            if [ -z "$INFRA_DIR" ]; then
+              INFRA_DIR="$HOME/clenzy-infra"
+            fi
+            cd "$INFRA_DIR"
+            set -a
+            . ./.env
+            set +a
+            echo "Executing SQL migration..."
+            echo "SQL: ${SQL_CMD}"
+            docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
+              psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -c "${SQL_CMD}"
+            echo "Migration completed."
+            echo "Restarting pms-server..."
+            docker compose -f docker-compose.prod.yml --env-file .env restart pms-server
+            sleep 30
+            STATUS=$(docker compose -f docker-compose.prod.yml ps --format '{{.State}}' pms-server 2>/dev/null || echo "not found")
+            echo "pms-server: $STATUS"
