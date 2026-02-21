@@ -4,6 +4,8 @@
 # ===========================================
 # Genere le fichier userlist.txt a partir des variables d'environnement
 # puis demarre pgbouncer.
+#
+# Format MD5 PostgreSQL : md5(password + username)
 
 set -e
 
@@ -11,13 +13,15 @@ USERLIST_FILE="/etc/pgbouncer/userlist.txt"
 
 echo "==> Generating pgbouncer userlist..."
 
-# Generer le hash MD5 du mot de passe PostgreSQL
-PG_MD5=$(echo -n "${POSTGRES_PASSWORD}${POSTGRES_USER}" | md5sum | awk '{print "md5"$1}')
+# md5(password + username) — format standard PostgreSQL
+pg_md5="md5$(echo -n "${POSTGRES_PASSWORD}${POSTGRES_USER}" | md5sum | cut -d' ' -f1)"
+admin_md5="md5$(echo -n "${POSTGRES_PASSWORD}pgbouncer_admin" | md5sum | cut -d' ' -f1)"
+stats_md5="md5$(echo -n "${POSTGRES_PASSWORD}pgbouncer_stats" | md5sum | cut -d' ' -f1)"
 
 cat > "$USERLIST_FILE" <<EOF
-"${POSTGRES_USER}" "${PG_MD5}"
-"pgbouncer_admin" "${PG_MD5}"
-"pgbouncer_stats" "${PG_MD5}"
+"${POSTGRES_USER}" "${pg_md5}"
+"pgbouncer_admin" "${admin_md5}"
+"pgbouncer_stats" "${stats_md5}"
 EOF
 
 chmod 600 "$USERLIST_FILE"

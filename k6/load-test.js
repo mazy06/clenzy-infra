@@ -205,9 +205,9 @@ export function handleSummary(data) {
       error_rate: data.metrics.errors?.values.rate,
       vus_max: data.metrics.vus_max?.values.max,
     },
-    thresholds_passed: !Object.values(data.root_group?.checks || {}).some(
-      (c) => c.fails > 0
-    ),
+    thresholds_passed: Object.entries(data.metrics || {})
+      .filter(([_, m]) => m.thresholds)
+      .every(([_, m]) => Object.values(m.thresholds).every((t) => t.ok)),
   };
 
   return {
