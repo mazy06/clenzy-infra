@@ -15,6 +15,10 @@
 postgres-data-*/
 redis-data-*/
 
+# k6 load test results
+k6/results/*.json
+!k6/results/.gitkeep
+
 # OS
 .DS_Store
 Thumbs.db

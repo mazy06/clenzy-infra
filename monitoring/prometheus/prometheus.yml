@@ -28,10 +28,14 @@ scrape_configs:
           app: 'clenzy'
           component: 'keycloak'
 
-  # PostgreSQL (via postgres-exporter si ajoute)
-  # - job_name: 'postgres'
-  #   static_configs:
-  #     - targets: ['postgres-exporter:9187']
+  # PostgreSQL — Niveau 8 Scalabilite
+  - job_name: 'postgres'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+        labels:
+          app: 'clenzy'
+          component: 'postgres'
 
   # Redis (via redis-exporter si ajoute)
   # - job_name: 'redis'

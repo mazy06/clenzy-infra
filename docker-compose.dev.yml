@@ -66,6 +66,33 @@ services:
         aliases:
           - postgres
 
+  # PgBouncer — Connection Pooling (dev)
+  # Niveau 8 — Scalabilite : meme config qu'en prod pour tester localement
+  pgbouncer:
+    image: edoburu/pgbouncer:1.22.0
+    container_name: clenzy-pgbouncer-dev
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+      - ./pgbouncer/entrypoint.sh:/entrypoint.sh:ro
+    entrypoint: /entrypoint.sh
+    ports:
+      - "6432:6432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -p 6432 -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      clenzy-network:
+        aliases:
+          - pgbouncer
+
   # Cache Redis
   redis:
     image: redis:7-alpine
@@ -195,6 +222,34 @@ services:
           - clenzy-mailpit
 
   # ==========================================
+  # LIBREOFFICE (Conversion ODT → PDF)
+  # ==========================================
+
+  # Gotenberg — LibreOffice headless pour conversion de documents (multi-arch amd64/arm64)
+  # REST API : POST /forms/libreoffice/convert  (multipart files)
+  # Health   : GET /health
+  # Docs     : https://gotenberg.dev
+  libreoffice:
+    image: gotenberg/gotenberg:8
+    container_name: clenzy-libreoffice-dev
+    ports:
+      - "8083:3000"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3000/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      clenzy-network:
+        aliases:
+          - clenzy-libreoffice
+
+  # ==========================================
   # PMS (Application métier)
   # ==========================================
 
@@ -250,8 +305,12 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      libreoffice:
+        condition: service_healthy
     volumes:
       - contact-uploads-dev:/app/uploads/contact
+      - document-templates-dev:/app/uploads/templates
+      - document-generated-dev:/app/uploads/documents
     networks:
       clenzy-network:
         aliases:
@@ -348,6 +407,40 @@ services:
         aliases:
           - loki
 
+  # PostgreSQL Exporter — Metriques Prometheus (dev)
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: clenzy-postgres-exporter-dev
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable"
+    volumes:
+      - ./postgres/postgres-exporter-queries.yml:/etc/postgres-exporter/queries.yml:ro
+    command:
+      - '--extend.query-path=/etc/postgres-exporter/queries.yml'
+      - '--web.listen-address=:9187'
+    ports:
+      - "9187:9187"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - clenzy-network
+
+  # k6 — Load Testing (dev)
+  # Usage : docker compose -f docker-compose.dev.yml run --rm k6 run /scripts/smoke-test.js
+  k6:
+    image: grafana/k6:0.49.0
+    container_name: clenzy-k6-dev
+    profiles:
+      - loadtest
+    volumes:
+      - ./k6:/scripts:ro
+      - ./k6/results:/scripts/results
+    environment:
+      BASE_URL: http://clenzy-server:8080
+    networks:
+      - clenzy-network
+
   # Promtail - Collecte de logs vers Loki
   promtail:
     image: grafana/promtail:2.9.4
@@ -368,6 +461,8 @@ volumes:
   redis-data-dev:
   kafka-data-dev:
   contact-uploads-dev:
+  document-templates-dev:
+  document-generated-dev:
   prometheus-data-dev:
   grafana-data-dev:
   loki-data-dev:

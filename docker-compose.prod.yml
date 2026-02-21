@@ -90,7 +90,7 @@ services:
   # INFRASTRUCTURE (BDD, Cache, Auth)
   # ==========================================
 
-  # Base de données PostgreSQL
+  # Base de données PostgreSQL (Primary)
   postgres:
     image: postgres:15-alpine
     container_name: clenzy-postgres-prod
@@ -99,15 +99,104 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_REPLICATION_PASSWORD: ${POSTGRES_REPLICATION_PASSWORD:-${POSTGRES_PASSWORD}}
       POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
     volumes:
       - postgres-data-prod:/var/lib/postgresql/data
-      - ./postgres/sync-password.sh:/docker-entrypoint-initdb.d/sync-password.sh:ro
+      - ./postgres/sync-password.sh:/docker-entrypoint-initdb.d/00-sync-password.sh:ro
+      - ./postgres/primary-init.sh:/docker-entrypoint-initdb.d/01-primary-init.sh:ro
+      - ./postgres/postgresql-primary.conf:/etc/postgresql/postgresql.conf:ro
+      - ./postgres/pg_hba_replication.conf:/etc/postgresql/pg_hba_replication.conf:ro
+    command: >
+      postgres
+      -c config_file=/etc/postgresql/postgresql.conf
+      -c hba_file=/etc/postgresql/pg_hba_replication.conf
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - clenzy-network
+
+  # PostgreSQL Read Replica (Streaming Replication)
+  # Niveau 8 — Scalabilite : replica en lecture seule pour router
+  # les requetes @Transactional(readOnly=true) depuis Spring Boot.
+  # Desactive par defaut — decommenter et configurer SPRING_DATASOURCE_REPLICA_URL
+  # dans le pms-server pour activer.
+  # postgres-replica:
+  #   image: postgres:15-alpine
+  #   container_name: clenzy-postgres-replica-prod
+  #   restart: unless-stopped
+  #   environment:
+  #     PGUSER: replicator
+  #     PGPASSWORD: ${POSTGRES_REPLICATION_PASSWORD:-${POSTGRES_PASSWORD}}
+  #   volumes:
+  #     - postgres-replica-data-prod:/var/lib/postgresql/data
+  #   command: >
+  #     bash -c "
+  #       if [ ! -f /var/lib/postgresql/data/PG_VERSION ]; then
+  #         echo 'Initializing replica from primary...'
+  #         pg_basebackup -h postgres -p 5432 -U replicator -D /var/lib/postgresql/data -Fp -Xs -P -R
+  #       fi
+  #       exec postgres -c hot_standby=on -c max_connections=150
+  #     "
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #   networks:
+  #     - clenzy-network
+
+  # PgBouncer — Connection Pooling
+  # Niveau 8 — Scalabilite : reduit les connexions directes a PostgreSQL
+  # de ~50 (HikariCP) a ~25 (pool pgBouncer), avec support 200 clients.
+  pgbouncer:
+    image: edoburu/pgbouncer:1.22.0
+    container_name: clenzy-pgbouncer-prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+      - ./pgbouncer/entrypoint.sh:/entrypoint.sh:ro
+    entrypoint: /entrypoint.sh
+    expose:
+      - "6432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -p 6432 -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - clenzy-network
+
+  # PostgreSQL Exporter — Metriques Prometheus
+  # Niveau 8 — Scalabilite : connexions, requetes, replication lag, taille BDD
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: clenzy-postgres-exporter-prod
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable"
+    volumes:
+      - ./postgres/postgres-exporter-queries.yml:/etc/postgres-exporter/queries.yml:ro
+    command:
+      - '--extend.query-path=/etc/postgres-exporter/queries.yml'
+      - '--web.listen-address=:9187'
+    expose:
+      - "9187"
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - clenzy-network
 
@@ -209,6 +298,33 @@ services:
       - clenzy-network
 
   # ==========================================
+  # LIBREOFFICE (Conversion ODT → PDF)
+  # ==========================================
+
+  # Gotenberg — LibreOffice headless pour conversion de documents (multi-arch amd64/arm64)
+  # REST API : POST /forms/libreoffice/convert  (multipart files)
+  # Health   : GET /health
+  # Docs     : https://gotenberg.dev
+  libreoffice:
+    image: gotenberg/gotenberg:8
+    container_name: clenzy-libreoffice-prod
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3000/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      clenzy-network:
+        aliases:
+          - clenzy-libreoffice
+
+  # ==========================================
   # PMS (Application métier)
   # ==========================================
 
@@ -228,9 +344,14 @@ services:
       STRIPE_CURRENCY: eur
       STRIPE_SUCCESS_URL: https://app.clenzy.fr/interventions/payment/success?session_id={CHECKOUT_SESSION_ID}
       STRIPE_CANCEL_URL: https://app.clenzy.fr/interventions/payment/cancel
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}?sslmode=prefer
+      # DataSource Primary (via pgBouncer)
+      SPRING_DATASOURCE_URL: jdbc:postgresql://pgbouncer:6432/${POSTGRES_DB}?sslmode=prefer
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      # DataSource Replica (pour @Transactional readOnly — fallback sur primary si non configure)
+      SPRING_DATASOURCE_REPLICA_URL: ${SPRING_DATASOURCE_REPLICA_URL:-jdbc:postgresql://pgbouncer:6432/${POSTGRES_DB}?sslmode=prefer}
+      SPRING_DATASOURCE_REPLICA_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_REPLICA_PASSWORD: ${POSTGRES_PASSWORD}
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: https://${AUTH_DOMAIN}/realms/clenzy
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://clenzy-keycloak:8080/realms/clenzy/protocol/openid-connect/certs
       KEYCLOAK_AUTH_SERVER_URL: http://clenzy-keycloak:8080
@@ -276,7 +397,7 @@ services:
     expose:
       - "8080"
     depends_on:
-      postgres:
+      pgbouncer:
         condition: service_healthy
       keycloak:
         condition: service_started
@@ -284,9 +405,12 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      libreoffice:
+        condition: service_healthy
     volumes:
       - contact-uploads-prod:/app/uploads/contact
-      - template-uploads-prod:/app/uploads/templates
+      - document-templates-prod:/app/uploads/templates
+      - document-generated-prod:/app/uploads/documents
     networks:
       clenzy-network:
         aliases:
@@ -327,6 +451,8 @@ services:
       - '--web.console.templates=/etc/prometheus/consoles'
     depends_on:
       pms-server:
+        condition: service_started
+      postgres-exporter:
         condition: service_started
     networks:
       - clenzy-network
@@ -371,6 +497,23 @@ services:
         aliases:
           - loki
 
+  # k6 — Load Testing
+  # Niveau 8 — Scalabilite : tests de charge pour valider la performance.
+  # Usage : docker compose -f docker-compose.prod.yml run --rm k6 run /scripts/load-test.js
+  k6:
+    image: grafana/k6:0.49.0
+    container_name: clenzy-k6-prod
+    profiles:
+      - loadtest
+    volumes:
+      - ./k6:/scripts:ro
+      - ./k6/results:/scripts/results
+    environment:
+      BASE_URL: http://clenzy-server:8080
+      AUTH_TOKEN: ${K6_AUTH_TOKEN:-}
+    networks:
+      - clenzy-network
+
   # Promtail - Collecte de logs vers Loki
   promtail:
     image: grafana/promtail:3.5.10
@@ -391,6 +534,7 @@ services:
 
 volumes:
   postgres-data-prod:
+  # postgres-replica-data-prod:  # Decommenter avec postgres-replica
   redis-data-prod:
   kafka-data-prod:
   certbot-webroot:
@@ -399,7 +543,8 @@ volumes:
   grafana-data-prod:
   loki-data-prod:
   contact-uploads-prod:
-  template-uploads-prod:
+  document-templates-prod:
+  document-generated-prod:
 
 networks:
   clenzy-network:
