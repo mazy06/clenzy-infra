@@ -74,8 +74,8 @@ pg_stat_user_tables:
       n_tup_upd,
       n_tup_del,
       n_dead_tup,
-      last_autovacuum,
-      last_autoanalyze
+      COALESCE(EXTRACT(EPOCH FROM last_autovacuum), 0) AS last_autovacuum_epoch,
+      COALESCE(EXTRACT(EPOCH FROM last_autoanalyze), 0) AS last_autoanalyze_epoch
     FROM pg_stat_user_tables
     WHERE schemaname = 'public'
     ORDER BY seq_scan DESC
@@ -112,3 +112,9 @@ pg_stat_user_tables:
     - n_dead_tup:
         usage: "GAUGE"
         description: "Dead tuples (need vacuum)"
+    - last_autovacuum_epoch:
+        usage: "GAUGE"
+        description: "Timestamp of last autovacuum (Unix epoch, 0 if never)"
+    - last_autoanalyze_epoch:
+        usage: "GAUGE"
+        description: "Timestamp of last autoanalyze (Unix epoch, 0 if never)"
