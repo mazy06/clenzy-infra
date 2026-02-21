@@ -82,6 +82,9 @@ http {
 
     # ==========================================
     # Upstreams
+    # Niveau 8 — Scalabilite : pms_backend utilise least_conn pour
+    # repartir la charge sur N instances (docker compose --scale pms-server=N).
+    # Docker DNS resout automatiquement les IPs des replicas.
     # ==========================================
     upstream landing {
         server clenzy-landing:80;
@@ -94,6 +97,7 @@ http {
     }
 
     upstream pms_backend {
+        least_conn;
         server clenzy-server:8080;
         keepalive 32;
     }
