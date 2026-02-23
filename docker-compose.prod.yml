@@ -345,12 +345,12 @@ services:
       STRIPE_CURRENCY: eur
       STRIPE_SUCCESS_URL: https://app.clenzy.fr/interventions/payment/success?session_id={CHECKOUT_SESSION_ID}
       STRIPE_CANCEL_URL: https://app.clenzy.fr/interventions/payment/cancel
-      # DataSource Primary (via pgBouncer — prepareThreshold=0 requis en mode transaction)
-      SPRING_DATASOURCE_URL: jdbc:postgresql://pgbouncer:6432/${POSTGRES_DB}?sslmode=prefer&prepareThreshold=0
+      # DataSource Primary (direct PostgreSQL — pgBouncer desactive temporairement, auth scram-sha-256 a configurer)
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}?sslmode=prefer
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
       # DataSource Replica (pour @Transactional readOnly — fallback sur primary si non configure)
-      SPRING_DATASOURCE_REPLICA_URL: ${SPRING_DATASOURCE_REPLICA_URL:-jdbc:postgresql://pgbouncer:6432/${POSTGRES_DB}?sslmode=prefer&prepareThreshold=0}
+      SPRING_DATASOURCE_REPLICA_URL: ${SPRING_DATASOURCE_REPLICA_URL:-jdbc:postgresql://postgres:5432/${POSTGRES_DB}?sslmode=prefer}
       SPRING_DATASOURCE_REPLICA_USERNAME: ${POSTGRES_USER}
       SPRING_DATASOURCE_REPLICA_PASSWORD: ${POSTGRES_PASSWORD}
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: https://${AUTH_DOMAIN}/realms/clenzy
