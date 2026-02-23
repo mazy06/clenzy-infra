@@ -20,6 +20,7 @@ on:
       - 'monitoring/**'
       - 'keycloak/**'
       - 'postgres/**'
+      - 'pgbouncer/**'
       - '.github/workflows/cd-deploy.yml'
   workflow_dispatch:
     inputs:
@@ -278,28 +279,63 @@ jobs:
             echo "♻️  Recréation de Nginx pour recharger la configuration..."
             docker compose -f docker-compose.prod.yml --env-file .env up -d --no-deps --force-recreate nginx
 
-            # --- Vérification santé ---
+            # --- Attente PostgreSQL post-deploy ---
+            # Apres un full-rebuild (--force-recreate), postgres est recree.
+            # On attend qu'il soit pret avant de verifier les autres services.
             echo ""
-            echo "⏳ Attente du démarrage des services (30s)..."
-            sleep 30
+            echo "⏳ Attente de PostgreSQL (post-deploy)..."
+            PG_POST=0
+            until docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
+              pg_isready -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" >/dev/null 2>&1; do
+              PG_POST=$((PG_POST + 1))
+              if [ "$PG_POST" -ge 30 ]; then
+                echo "❌ PostgreSQL non pret apres deploiement."
+                exit 1
+              fi
+              sleep 2
+            done
+            echo "   ✅ PostgreSQL pret."
 
+            # --- Healthcheck avec retry ---
             echo ""
             echo "📊 État des services :"
             docker compose -f docker-compose.prod.yml ps
 
-            # --- Healthcheck ---
             echo ""
-            echo "🏥 Vérification de santé :"
+            echo "🏥 Vérification de santé (attente max 120s) :"
 
-            # Vérifier que les conteneurs critiques sont running
+            # Keycloak a son propre check HTTP detaille ci-dessous, on le skip ici
+            BASIC_SERVICES=""
+            for S in $HEALTH_SERVICES; do
+              [ "$S" != "keycloak" ] && BASIC_SERVICES="$BASIC_SERVICES $S"
+            done
+
             FAILED=0
-            for SERVICE in $HEALTH_SERVICES; do
+            STILL_WAITING="$BASIC_SERVICES"
+            ELAPSED=0
+            MAX_WAIT=120
+            INTERVAL=5
+
+            while [ -n "$STILL_WAITING" ] && [ "$ELAPSED" -lt "$MAX_WAIT" ]; do
+              sleep "$INTERVAL"
+              ELAPSED=$((ELAPSED + INTERVAL))
+              NEXT_WAITING=""
+              for SERVICE in $STILL_WAITING; do
+                STATUS=$(docker compose -f docker-compose.prod.yml ps --format '{{.State}}' $SERVICE 2>/dev/null || echo "not found")
+                if [ "$STATUS" != "running" ]; then
+                  NEXT_WAITING="$NEXT_WAITING $SERVICE"
+                fi
+              done
+              STILL_WAITING="$NEXT_WAITING"
+            done
+
+            # Rapport final par service
+            for SERVICE in $BASIC_SERVICES; do
               STATUS=$(docker compose -f docker-compose.prod.yml ps --format '{{.State}}' $SERVICE 2>/dev/null || echo "not found")
               if [ "$STATUS" = "running" ]; then
                 echo "   ✅ $SERVICE : running"
               else
                 echo "   ❌ $SERVICE : $STATUS"
-                # Afficher les logs du service qui a echoue
                 echo "   📋 Logs recents de $SERVICE :"
                 docker compose -f docker-compose.prod.yml --env-file .env logs --tail=20 $SERVICE 2>&1 | tail -15 || true
                 FAILED=1
@@ -309,9 +345,9 @@ jobs:
             if echo " $HEALTH_SERVICES " | grep -q " keycloak "; then
               echo "🔎 Vérification readiness HTTP de Keycloak..."
               KEYCLOAK_READY=0
-              for _ in $(seq 1 30); do
-                # Utiliser pms-server (qui a wget via Eclipse Temurin) car l'image Keycloak UBI est minimaliste
-                READY_PAYLOAD=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T pms-server \
+              for _ in $(seq 1 60); do
+                # Utiliser postgres (Alpine BusyBox wget) pour ne pas dependre de pms-server
+                READY_PAYLOAD=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
                   sh -c "wget -qO- http://clenzy-keycloak:8080/health/ready" 2>/dev/null || true)
                 if echo "$READY_PAYLOAD" | grep -q '"status"[[:space:]]*:[[:space:]]*"UP"'; then
                   KEYCLOAK_READY=1
@@ -420,7 +456,7 @@ jobs:
                         echo "   Redemarrage de Keycloak (flush cache)..."
                         docker compose -f docker-compose.prod.yml --env-file .env restart keycloak
                         for _ in $(seq 1 40); do
-                          KC_READY2=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T pms-server \
+                          KC_READY2=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
                             sh -c "wget -qO- http://clenzy-keycloak:8080/health/ready" 2>/dev/null || true)
                           if echo "$KC_READY2" | grep -q '"status"[[:space:]]*:[[:space:]]*"UP"'; then
                             break
