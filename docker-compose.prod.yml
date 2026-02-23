@@ -156,7 +156,7 @@ services:
   # Niveau 8 — Scalabilite : reduit les connexions directes a PostgreSQL
   # de ~50 (HikariCP) a ~25 (pool pgBouncer), avec support 200 clients.
   pgbouncer:
-    image: edoburu/pgbouncer:1.22.0
+    image: edoburu/pgbouncer:v1.23.1-p3
     container_name: clenzy-pgbouncer-prod
     restart: unless-stopped
     environment:
@@ -340,6 +340,7 @@ services:
       SPRING_PROFILES_ACTIVE: prod
       SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_LIQUIBASE_ENABLED: "false"
       FRONTEND_URL: https://app.clenzy.fr
       STRIPE_CURRENCY: eur
       STRIPE_SUCCESS_URL: https://app.clenzy.fr/interventions/payment/success?session_id={CHECKOUT_SESSION_ID}
@@ -411,6 +412,7 @@ services:
       - contact-uploads-prod:/app/uploads/contact
       - document-templates-prod:/app/uploads/templates
       - document-generated-prod:/app/uploads/documents
+      - backups-prod:/app/backups
     networks:
       clenzy-network:
         aliases:
@@ -545,6 +547,7 @@ volumes:
   contact-uploads-prod:
   document-templates-prod:
   document-generated-prod:
+  backups-prod:
 
 networks:
   clenzy-network:
