@@ -129,7 +129,12 @@ else
     echo "📦 Mise a jour de tous les services..."
     $DC pull
     echo "   Phase 1 — Infrastructure de base (postgres, redis)..."
-    $DC up -d postgres redis
+    # --force-recreate : les configs postgres (postgresql.conf, pg_hba.conf)
+    # sont des bind mounts. docker compose up -d ne detecte pas les
+    # changements de contenu des bind mounts — force-recreate garantit
+    # que postgres relit toujours la derniere config.
+    # Les donnees sont preservees (volume nomme postgres-data-prod).
+    $DC up -d --force-recreate postgres redis
     wait_pg "apres mise a jour"
     echo "   Phase 2 — Demarrage de tous les services..."
     $DC up -d
