@@ -1,13 +1,16 @@
 # ===========================================
-# Clenzy — CD Deploy (Déploiement complet VPS)
+# Clenzy — CD Deploy (Deploiement complet VPS)
 # ===========================================
-# Workflow pour déployer l'ensemble de l'infrastructure sur le VPS OVH.
-# Déclenché :
+# Workflow pour deployer l'ensemble de l'infrastructure sur le VPS OVH.
+# Declenche :
 #   - Automatiquement quand on push/merge sur la branche 'production'
 #   - Manuellement via workflow_dispatch
-#   - À distance via repository_dispatch (depuis les repos applicatifs)
+#   - A distance via repository_dispatch (depuis les repos applicatifs)
 # Note: trigger via push requires matching one of the configured paths below.
 # Note: updating GitHub environment secrets/variables does not trigger this workflow automatically.
+#
+# La logique de deploiement est dans scripts/deploy.sh.
+# Ce workflow ne fait que : bootstrap repo, .env, GHCR auth, puis appelle le script.
 
 name: CD Deploy
 
@@ -21,11 +24,12 @@ on:
       - 'keycloak/**'
       - 'postgres/**'
       - 'pgbouncer/**'
+      - 'scripts/**'
       - '.github/workflows/cd-deploy.yml'
   workflow_dispatch:
     inputs:
       deploy_mode:
-        description: 'Mode de déploiement'
+        description: 'Mode de deploiement'
         required: true
         default: 'update'
         type: choice
@@ -33,7 +37,7 @@ on:
           - update
           - full-rebuild
       force_env_sync:
-        description: 'Forcer la synchronisation du .env depuis le secret PROD_ENV_FILE_B64 (recommandé si changement de secrets)'
+        description: 'Forcer la synchronisation du .env depuis le secret PROD_ENV_FILE_B64'
         required: true
         default: 'false'
         type: choice
@@ -41,7 +45,7 @@ on:
           - 'false'
           - 'true'
       services:
-        description: 'Services à déployer (vide = tous)'
+        description: 'Services a deployer (vide = tous)'
         required: false
         default: ''
         type: string
@@ -59,38 +63,32 @@ jobs:
     name: Deploy Infrastructure
     runs-on: ubuntu-latest
     environment: production
-    env:
-      VPS_HOST: ${{ secrets.VPS_HOST != '' && secrets.VPS_HOST || vars.VPS_HOST }}
-      VPS_USER: ${{ secrets.VPS_USER != '' && secrets.VPS_USER || vars.VPS_USER }}
-      VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
-      GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
-      PROD_ENV_FILE: ${{ secrets.PROD_ENV_FILE }}
-      PROD_ENV_FILE_B64: ${{ secrets.PROD_ENV_FILE_B64 }}
-      VPS_INFRA_DIR: ${{ vars.VPS_INFRA_DIR }}
 
     steps:
       - name: Checkout infrastructure
         uses: actions/checkout@v4
 
       - name: Validate required deployment secrets
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST != '' && secrets.VPS_HOST || vars.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER != '' && secrets.VPS_USER || vars.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
         run: |
           set -e
           missing=0
-
           for key in VPS_HOST VPS_USER; do
             if [ -z "${!key}" ]; then
               echo "❌ Valeur manquante: $key (secret OU variable, repo/environnement production)"
               missing=1
             fi
           done
-
           for key in VPS_SSH_KEY GHCR_TOKEN; do
             if [ -z "${!key}" ]; then
               echo "❌ Secret manquant: $key (repo/environnement production)"
               missing=1
             fi
           done
-
           if [ "$missing" -eq 1 ]; then
             echo "Configurer les secrets GitHub Actions puis relancer le workflow."
             exit 1
@@ -98,23 +96,30 @@ jobs:
 
       - name: Deploy to VPS via SSH
         uses: appleboy/ssh-action@v1
+        env:
+          DEPLOY_INFRA_DIR: ${{ vars.VPS_INFRA_DIR }}
+          DEPLOY_REPO: ${{ github.repository }}
+          DEPLOY_GHCR_OWNER: ${{ github.repository_owner }}
+          DEPLOY_GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          DEPLOY_ENV_B64: ${{ secrets.PROD_ENV_FILE_B64 }}
+          DEPLOY_FORCE_ENV: ${{ github.event.client_payload.force_env_sync || github.event.inputs.force_env_sync || 'false' }}
+          DEPLOY_MODE: ${{ github.event.client_payload.deploy_mode || github.event.inputs.deploy_mode || 'update' }}
+          DEPLOY_SERVICES: ${{ github.event.client_payload.services || github.event.client_payload.service || github.event.inputs.services || '' }}
         with:
-          host: ${{ env.VPS_HOST }}
-          username: ${{ env.VPS_USER }}
-          key: ${{ env.VPS_SSH_KEY }}
+          host: ${{ secrets.VPS_HOST != '' && secrets.VPS_HOST || vars.VPS_HOST }}
+          username: ${{ secrets.VPS_USER != '' && secrets.VPS_USER || vars.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT || 22 }}
+          envs: DEPLOY_INFRA_DIR,DEPLOY_REPO,DEPLOY_GHCR_OWNER,DEPLOY_GHCR_TOKEN,DEPLOY_ENV_B64,DEPLOY_FORCE_ENV,DEPLOY_MODE,DEPLOY_SERVICES
+          command_timeout: 30m
           script: |
             set -e
             echo "=========================================="
             echo "🚀 Clenzy — Deploiement Infrastructure"
             echo "=========================================="
-            echo ""
 
-            INFRA_DIR="${{ env.VPS_INFRA_DIR }}"
-            if [ -z "$INFRA_DIR" ]; then
-              INFRA_DIR="$HOME/clenzy-infra"
-            fi
-            REPO_URL="https://github.com/${{ github.repository }}.git"
+            INFRA_DIR="${DEPLOY_INFRA_DIR:-$HOME/clenzy-infra}"
+            REPO_URL="https://github.com/${DEPLOY_REPO}.git"
 
             if [ ! -d "$INFRA_DIR/.git" ]; then
               echo "📁 Dossier infra absent, bootstrap du repo..."
@@ -124,19 +129,16 @@ jobs:
 
             cd "$INFRA_DIR"
 
-            # --- Authentification GHCR ---
             echo "🔐 Connexion au GitHub Container Registry..."
-            echo "${{ env.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ github.repository_owner }} --password-stdin
+            echo "$DEPLOY_GHCR_TOKEN" | docker login ghcr.io -u "$DEPLOY_GHCR_OWNER" --password-stdin
 
-            # --- Mise à jour du repo infra ---
-            echo "📥 Mise à jour du repo infrastructure..."
+            echo "📥 Mise a jour du repo infrastructure..."
             git fetch origin production
             git reset --hard origin/production
 
             # --- Provisioning .env ---
-            FORCE_ENV_SYNC="${{ github.event.client_payload.force_env_sync || github.event.inputs.force_env_sync || 'false' }}"
-            if [ "$FORCE_ENV_SYNC" = "true" ]; then
-              if [ -z "${{ env.PROD_ENV_FILE_B64 }}" ]; then
+            if [ "$DEPLOY_FORCE_ENV" = "true" ]; then
+              if [ -z "$DEPLOY_ENV_B64" ]; then
                 echo "❌ FORCE_ENV_SYNC=true mais secret PROD_ENV_FILE_B64 absent."
                 exit 1
               fi
@@ -146,431 +148,26 @@ jobs:
                 chmod 600 ".env.bak.${ts}" || true
                 echo "💾 Backup .env -> .env.bak.${ts}"
               fi
-              echo "📝 Synchronisation forcée de .env depuis secret PROD_ENV_FILE_B64..."
+              echo "📝 Synchronisation forcee de .env..."
               umask 077
-              printf '%s' "${{ env.PROD_ENV_FILE_B64 }}" | base64 -d > .env
+              printf '%s' "$DEPLOY_ENV_B64" | base64 -d > .env
               chmod 600 .env
             else
               if [ ! -f ".env" ]; then
-                if [ -n "${{ env.PROD_ENV_FILE_B64 }}" ]; then
-                  echo "📝 Création de .env depuis secret PROD_ENV_FILE_B64..."
+                if [ -n "$DEPLOY_ENV_B64" ]; then
+                  echo "📝 Creation de .env depuis secret..."
                   umask 077
-                  printf '%s' "${{ env.PROD_ENV_FILE_B64 }}" | base64 -d > .env
+                  printf '%s' "$DEPLOY_ENV_B64" | base64 -d > .env
                 else
-                  echo "❌ Fichier .env absent sur le VPS et aucun secret de bootstrap trouvé."
-                  echo "   Ajouter PROD_ENV_FILE_B64 dans l'environnement GitHub 'production'."
+                  echo "❌ Fichier .env absent et aucun secret de bootstrap."
                   exit 1
                 fi
                 chmod 600 .env
               fi
             fi
 
-            # Charge les variables .env dans le shell distant.
-            set -a
-            . ./.env
-            set +a
-
-            # --- Bootstrap PostgreSQL & Keycloak DB ---
-            # Toutes les connexions DB (Keycloak, pms-server) utilisent
-            # POSTGRES_USER / POSTGRES_PASSWORD — un seul couple d'identifiants.
-            KEYCLOAK_DB_NAME="${KEYCLOAK_DB_NAME:-keycloak_prod}"
-            if [ -z "$POSTGRES_PASSWORD" ]; then
-              echo "❌ POSTGRES_PASSWORD manquant dans .env."
-              exit 1
-            fi
-            PG_USER_LIT=$(printf '%s' "${POSTGRES_USER}" | sed "s/'/''/g")
-            PG_USER_IDENT=$(printf '%s' "${POSTGRES_USER}" | sed 's/"/""/g')
-            PG_PASSWORD_LIT=$(printf '%s' "${POSTGRES_PASSWORD}" | sed "s/'/''/g")
-            KC_DB_NAME_LIT=$(printf '%s' "${KEYCLOAK_DB_NAME}" | sed "s/'/''/g")
-            KC_DB_NAME_IDENT=$(printf '%s' "${KEYCLOAK_DB_NAME}" | sed 's/"/""/g')
-
-            echo "🗄️  Démarrage de PostgreSQL..."
-            docker compose -f docker-compose.prod.yml --env-file .env up -d postgres
-
-            ATTEMPTS=0
-            until docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-              pg_isready -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" >/dev/null 2>&1; do
-              ATTEMPTS=$((ATTEMPTS + 1))
-              if [ "$ATTEMPTS" -ge 30 ]; then
-                echo "❌ PostgreSQL non prêt après attente."
-                exit 1
-              fi
-              sleep 2
-            done
-
-            # Synchronise le mot de passe du user principal avec la valeur du .env.
-            # Résout le problème du volume persistant qui conserve l'ancien mot de passe.
-            echo "🔑 Synchronisation du mot de passe PostgreSQL (${POSTGRES_USER})..."
-            docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-              psql -U "${POSTGRES_USER}" -d postgres -v ON_ERROR_STOP=1 \
-              -c "ALTER USER \"${PG_USER_IDENT}\" WITH PASSWORD '${PG_PASSWORD_LIT}';"
-
-            # Vérification que le mot de passe fonctionne (connexion TCP)
-            AUTH_OK=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T \
-              -e PGPASSWORD="${POSTGRES_PASSWORD}" postgres \
-              psql -h localhost -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -tAc "SELECT 1" 2>/dev/null || true)
-            if [ "$AUTH_OK" != "1" ]; then
-              echo "❌ Échec de la synchronisation du mot de passe PostgreSQL."
-              exit 1
-            fi
-            echo "   ✅ Mot de passe PostgreSQL synchronisé."
-
-            # --- Bootstrap base Keycloak ---
-            echo "🗄️  Vérification base Keycloak (${KEYCLOAK_DB_NAME})..."
-            DB_EXISTS=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-              psql -U "${POSTGRES_USER}" -d postgres -tAc \
-              "SELECT 1 FROM pg_database WHERE datname='${KC_DB_NAME_LIT}'")
-            if [ "$DB_EXISTS" != "1" ]; then
-              echo "➕ Création de la base ${KEYCLOAK_DB_NAME}..."
-              docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-                psql -U "${POSTGRES_USER}" -d postgres -v ON_ERROR_STOP=1 \
-                -c "CREATE DATABASE \"${KC_DB_NAME_IDENT}\" OWNER \"${PG_USER_IDENT}\";"
-            fi
-
-            docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-              psql -U "${POSTGRES_USER}" -d postgres -v ON_ERROR_STOP=1 \
-              -c "GRANT ALL PRIVILEGES ON DATABASE \"${KC_DB_NAME_IDENT}\" TO \"${PG_USER_IDENT}\";"
-
-            # Vérification auth sur la base Keycloak
-            AUTH_KC=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T \
-              -e PGPASSWORD="${POSTGRES_PASSWORD}" postgres \
-              psql -h localhost -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME}" -tAc "SELECT 1" 2>/dev/null || true)
-            if [ "$AUTH_KC" != "1" ]; then
-              echo "❌ Auth DB Keycloak invalide (${POSTGRES_USER}@${KEYCLOAK_DB_NAME})."
-              exit 1
-            fi
-            echo "   ✅ Base Keycloak OK."
-
-            # --- Backup avant déploiement ---
-            echo "💾 Backup pré-déploiement..."
-            if [ -f "./backup/backup.sh" ]; then
-              bash ./backup/backup.sh --env prod --db-only 2>/dev/null || echo "⚠️  Backup ignoré (base non disponible)"
-            fi
-
-            DEPLOY_MODE="${{ github.event.client_payload.deploy_mode || github.event.inputs.deploy_mode || 'update' }}"
-            SERVICES="${{ github.event.client_payload.services || github.event.client_payload.service || github.event.inputs.services || '' }}"
-            SERVICES_LIST=$(echo "$SERVICES" | tr ',' ' ')
-
-            # --- Deploiement par phases ---
-            # Phase 1 : postgres + redis (base infra) demarres EN PREMIER
-            # Phase 2 : tous les autres services (keycloak, pms-server, etc.)
-            # Cela evite le race condition ou keycloak/pms-server demarrent
-            # avant que postgres soit pret (surtout apres pull d'une nouvelle image).
-
-            if [ "$DEPLOY_MODE" = "full-rebuild" ]; then
-              echo "🔄 Rebuild complet de tous les services..."
-              docker compose -f docker-compose.prod.yml --env-file .env pull
-              # Arret propre de tous les containers
-              echo "   Arret de tous les services..."
-              docker compose -f docker-compose.prod.yml --env-file .env down --timeout 30
-              # Phase 1 : demarrer postgres + redis
-              echo "   Phase 1 — Demarrage PostgreSQL + Redis..."
-              docker compose -f docker-compose.prod.yml --env-file .env up -d postgres redis
-              PG_PHASE=0
-              until docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-                pg_isready -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" >/dev/null 2>&1; do
-                PG_PHASE=$((PG_PHASE + 1))
-                if [ "$PG_PHASE" -ge 30 ]; then
-                  echo "❌ PostgreSQL non pret apres rebuild."
-                  exit 1
-                fi
-                sleep 2
-              done
-              echo "   ✅ PostgreSQL pret."
-              # Phase 2 : demarrer tous les services restants
-              echo "   Phase 2 — Demarrage de tous les services..."
-              docker compose -f docker-compose.prod.yml --env-file .env up -d
-              HEALTH_SERVICES="nginx pms-server pms-client landing postgres redis keycloak kafka"
-            else
-              if [ -n "$SERVICES_LIST" ]; then
-                echo "📦 Mise à jour des services : $SERVICES_LIST"
-                docker compose -f docker-compose.prod.yml --env-file .env pull $SERVICES_LIST
-                docker compose -f docker-compose.prod.yml --env-file .env up -d $SERVICES_LIST
-                HEALTH_SERVICES="$SERVICES_LIST"
-              else
-                echo "📦 Mise à jour de tous les services..."
-                docker compose -f docker-compose.prod.yml --env-file .env pull
-                # Phase 1 : demarrer postgres + redis en premier
-                echo "   Phase 1 — Infrastructure de base (postgres, redis)..."
-                docker compose -f docker-compose.prod.yml --env-file .env up -d postgres redis
-                PG_PHASE=0
-                until docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-                  pg_isready -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" >/dev/null 2>&1; do
-                  PG_PHASE=$((PG_PHASE + 1))
-                  if [ "$PG_PHASE" -ge 30 ]; then
-                    echo "❌ PostgreSQL non pret apres mise a jour."
-                    exit 1
-                  fi
-                  sleep 2
-                done
-                echo "   ✅ PostgreSQL pret."
-                # Phase 2 : demarrer tous les services restants
-                echo "   Phase 2 — Demarrage de tous les services..."
-                docker compose -f docker-compose.prod.yml --env-file .env up -d
-                HEALTH_SERVICES="nginx pms-server pms-client landing postgres redis keycloak kafka"
-              fi
-            fi
-
-            # --- Nettoyage ---
-            echo "🧹 Nettoyage des anciennes images..."
-            docker image prune -f
-
-            # Recharge/recrée Nginx pour appliquer les templates envsubst
-            # (sinon Nginx peut garder une ancienne resolution d'upstream).
-            echo "♻️  Recréation de Nginx pour recharger la configuration..."
-            docker compose -f docker-compose.prod.yml --env-file .env up -d --no-deps --force-recreate nginx
-
-            # --- Attente PostgreSQL post-deploy ---
-            # Apres un full-rebuild (--force-recreate), postgres est recree.
-            # On attend qu'il soit pret avant de verifier les autres services.
-            echo ""
-            echo "⏳ Attente de PostgreSQL (post-deploy)..."
-            PG_POST=0
-            until docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-              pg_isready -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" >/dev/null 2>&1; do
-              PG_POST=$((PG_POST + 1))
-              if [ "$PG_POST" -ge 30 ]; then
-                echo "❌ PostgreSQL non pret apres deploiement."
-                exit 1
-              fi
-              sleep 2
-            done
-            echo "   ✅ PostgreSQL pret."
-
-            # --- Healthcheck avec retry ---
-            echo ""
-            echo "📊 État des services :"
-            docker compose -f docker-compose.prod.yml ps
-
-            echo ""
-            echo "🏥 Vérification de santé (attente max 120s) :"
-
-            # Keycloak a son propre check HTTP detaille ci-dessous, on le skip ici
-            BASIC_SERVICES=""
-            for S in $HEALTH_SERVICES; do
-              [ "$S" != "keycloak" ] && BASIC_SERVICES="$BASIC_SERVICES $S"
-            done
-
-            FAILED=0
-            STILL_WAITING="$BASIC_SERVICES"
-            ELAPSED=0
-            MAX_WAIT=120
-            INTERVAL=5
-
-            while [ -n "$STILL_WAITING" ] && [ "$ELAPSED" -lt "$MAX_WAIT" ]; do
-              sleep "$INTERVAL"
-              ELAPSED=$((ELAPSED + INTERVAL))
-              NEXT_WAITING=""
-              for SERVICE in $STILL_WAITING; do
-                STATUS=$(docker compose -f docker-compose.prod.yml ps --format '{{.State}}' $SERVICE 2>/dev/null || echo "not found")
-                if [ "$STATUS" != "running" ]; then
-                  NEXT_WAITING="$NEXT_WAITING $SERVICE"
-                fi
-              done
-              STILL_WAITING="$NEXT_WAITING"
-            done
-
-            # Rapport final par service
-            for SERVICE in $BASIC_SERVICES; do
-              STATUS=$(docker compose -f docker-compose.prod.yml ps --format '{{.State}}' $SERVICE 2>/dev/null || echo "not found")
-              if [ "$STATUS" = "running" ]; then
-                echo "   ✅ $SERVICE : running"
-              else
-                echo "   ❌ $SERVICE : $STATUS"
-                echo "   📋 Logs recents de $SERVICE :"
-                docker compose -f docker-compose.prod.yml --env-file .env logs --tail=20 $SERVICE 2>&1 | tail -15 || true
-                FAILED=1
-              fi
-            done
-
-            if echo " $HEALTH_SERVICES " | grep -q " keycloak "; then
-              echo "🔎 Vérification readiness HTTP de Keycloak..."
-              KEYCLOAK_READY=0
-              for _ in $(seq 1 60); do
-                # Utiliser postgres (Alpine BusyBox wget) pour ne pas dependre de pms-server
-                READY_PAYLOAD=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-                  sh -c "wget -qO- http://clenzy-keycloak:8080/health/ready" 2>/dev/null || true)
-                if echo "$READY_PAYLOAD" | grep -q '"status"[[:space:]]*:[[:space:]]*"UP"'; then
-                  KEYCLOAK_READY=1
-                  break
-                fi
-                sleep 2
-              done
-              if [ "$KEYCLOAK_READY" -eq 1 ]; then
-                echo "   ✅ keycloak readiness HTTP: UP"
-
-                # --- Synchronisation mot de passe admin Keycloak ---
-                # KEYCLOAK_ADMIN / KEYCLOAK_ADMIN_PASSWORD ne sont pris en compte que
-                # lors du tout premier demarrage (master realm absent).
-                # Keycloak 24 n'a pas kc.sh bootstrap-admin (disponible 25+).
-                # Methode : generer un hash PBKDF2-SHA256 via openssl sur le VPS,
-                # puis UPDATE la table credential dans PostgreSQL.
-                if [ -n "${KEYCLOAK_ADMIN}" ] && [ -n "${KEYCLOAK_ADMIN_PASSWORD}" ]; then
-                  echo "🔑 Verification du mot de passe admin Keycloak..."
-                  KC_LOGIN_OK=0
-                  docker compose -f docker-compose.prod.yml --env-file .env exec -T keycloak \
-                    /opt/keycloak/bin/kcadm.sh config credentials \
-                      --server http://localhost:8080 \
-                      --realm master \
-                      --user "${KEYCLOAK_ADMIN}" \
-                      --password "${KEYCLOAK_ADMIN_PASSWORD}" 2>/dev/null || KC_LOGIN_OK=$?
-                  if [ "$KC_LOGIN_OK" -ne 0 ]; then
-                    echo "   ⚠️  Mot de passe admin desynchronise, reset via PBKDF2 + SQL..."
-
-                    # Trouver le realm master UUID et l'admin user ID
-                    KC_MASTER_REALM_ID=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-                      psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -tAc \
-                      "SELECT id FROM realm WHERE name='master'" 2>/dev/null | tr -d '[:space:]')
-
-                    KC_ADMIN_ID=""
-                    if [ -n "$KC_MASTER_REALM_ID" ]; then
-                      KC_ADMIN_ID=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-                        psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -tAc \
-                        "SELECT id FROM user_entity WHERE username='${KEYCLOAK_ADMIN}' AND realm_id='${KC_MASTER_REALM_ID}'" 2>/dev/null | tr -d '[:space:]')
-                    fi
-
-                    if [ -n "$KC_ADMIN_ID" ]; then
-                      echo "   Admin user trouve (id: ${KC_ADMIN_ID})"
-                      # Debug: afficher le format actuel des credentials pour diagnostic
-                      echo "   [DEBUG] Credential actuelle:"
-                      docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-                        psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -tAc \
-                        "SELECT credential_data FROM credential WHERE user_id='${KC_ADMIN_ID}' AND type='password';" 2>/dev/null || true
-                      # Lire l'algorithme et les iterations actuels
-                      KC_CURRENT_ALGO=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-                        psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -tAc \
-                        "SELECT credential_data::json->>'algorithm' FROM credential WHERE user_id='${KC_ADMIN_ID}' AND type='password';" 2>/dev/null | tr -d '[:space:]')
-                      KC_CURRENT_ITER=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-                        psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -tAc \
-                        "SELECT credential_data::json->>'hashIterations' FROM credential WHERE user_id='${KC_ADMIN_ID}' AND type='password';" 2>/dev/null | tr -d '[:space:]')
-                      echo "   [DEBUG] Algorithme: ${KC_CURRENT_ALGO:-inconnu}, Iterations: ${KC_CURRENT_ITER:-inconnu}"
-                      # Utiliser le meme algorithme que l'existant, sinon defaut pbkdf2-sha256
-                      KC_ALGO="${KC_CURRENT_ALGO:-pbkdf2-sha256}"
-                      KC_ITER="${KC_CURRENT_ITER:-27500}"
-                      # Mapper l'algo Keycloak vers le digest openssl
-                      case "$KC_ALGO" in
-                        pbkdf2-sha512) KC_DIGEST="SHA512" ; KC_KEYLEN=64 ;;
-                        pbkdf2-sha256) KC_DIGEST="SHA256" ; KC_KEYLEN=64 ;;
-                        *)             KC_DIGEST="SHA256" ; KC_KEYLEN=64 ; KC_ALGO="pbkdf2-sha256" ;;
-                      esac
-                      echo "   [DEBUG] Utilisation: digest=${KC_DIGEST}, iter=${KC_ITER}, keylen=${KC_KEYLEN}"
-                      # Generer hash via openssl sur le VPS host
-                      KC_SALT_HEX=$(openssl rand -hex 16)
-                      KC_HASH_COLON=$(openssl kdf -keylen "$KC_KEYLEN" -kdfopt "digest:${KC_DIGEST}" \
-                        -kdfopt "pass:${KEYCLOAK_ADMIN_PASSWORD}" \
-                        -kdfopt "hexsalt:${KC_SALT_HEX}" \
-                        -kdfopt "iter:${KC_ITER}" PBKDF2 2>/dev/null || true)
-                      KC_HASH_B64=""
-                      KC_SALT_B64=""
-                      if [ -n "$KC_HASH_COLON" ]; then
-                        KC_HASH_HEX=$(echo "$KC_HASH_COLON" | tr -d ':[:space:]')
-                        KC_HASH_B64=$(printf '%s' "$KC_HASH_HEX" | xxd -r -p | base64 -w0)
-                        KC_SALT_B64=$(printf '%s' "$KC_SALT_HEX" | xxd -r -p | base64 -w0)
-                      fi
-                      echo "   [DEBUG] Hash B64 length: $(echo -n "${KC_HASH_B64}" | wc -c), Salt B64: ${KC_SALT_B64}"
-
-                      if [ -n "$KC_HASH_B64" ] && [ -n "$KC_SALT_B64" ]; then
-                        echo "   Hash genere, mise a jour en base..."
-                        KC_SECRET_DATA="{\"value\":\"${KC_HASH_B64}\",\"salt\":\"${KC_SALT_B64}\"}"
-                        KC_CRED_DATA="{\"hashIterations\":${KC_ITER},\"algorithm\":\"${KC_ALGO}\",\"additionalParameters\":{}}"
-                        echo "   [DEBUG] secret_data: ${KC_SECRET_DATA}"
-                        echo "   [DEBUG] credential_data: ${KC_CRED_DATA}"
-                        # UPDATE la credential existante
-                        docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-                          psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -c \
-                          "UPDATE credential SET secret_data='${KC_SECRET_DATA}', credential_data='${KC_CRED_DATA}' WHERE user_id='${KC_ADMIN_ID}' AND type='password';" 2>&1 || true
-                        # Supprimer les required_actions (ex: UPDATE_PASSWORD) qui bloquent le login
-                        echo "   Suppression des required_actions..."
-                        docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-                          psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -c \
-                          "DELETE FROM user_required_action WHERE user_id='${KC_ADMIN_ID}';" 2>&1 || true
-                        # Si pas de credential password, en creer une
-                        CRED_COUNT=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-                          psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -tAc \
-                          "SELECT count(*) FROM credential WHERE user_id='${KC_ADMIN_ID}' AND type='password';" 2>/dev/null | tr -d '[:space:]')
-                        if [ "$CRED_COUNT" = "0" ]; then
-                          docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-                            psql -U "${POSTGRES_USER}" -d "${KEYCLOAK_DB_NAME:-keycloak_prod}" -c \
-                            "INSERT INTO credential (id, user_id, type, secret_data, credential_data, priority) VALUES (gen_random_uuid()::text, '${KC_ADMIN_ID}', 'password', '${KC_SECRET_DATA}', '${KC_CRED_DATA}', 10);" 2>&1 || true
-                        fi
-                        # Redemarrer Keycloak pour vider le cache Infinispan des credentials
-                        echo "   Redemarrage de Keycloak (flush cache)..."
-                        docker compose -f docker-compose.prod.yml --env-file .env restart keycloak
-                        for _ in $(seq 1 40); do
-                          KC_READY2=$(docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-                            sh -c "wget -qO- http://clenzy-keycloak:8080/health/ready" 2>/dev/null || true)
-                          if echo "$KC_READY2" | grep -q '"status"[[:space:]]*:[[:space:]]*"UP"'; then
-                            break
-                          fi
-                          sleep 3
-                        done
-                        # Verifier login apres restart
-                        echo "   Verification du login admin..."
-                        KC_RETRY=0
-                        docker compose -f docker-compose.prod.yml --env-file .env exec -T keycloak \
-                          /opt/keycloak/bin/kcadm.sh config credentials \
-                            --server http://localhost:8080 \
-                            --realm master \
-                            --user "${KEYCLOAK_ADMIN}" \
-                            --password "${KEYCLOAK_ADMIN_PASSWORD}" 2>&1 || KC_RETRY=$?
-                        if [ "$KC_RETRY" -eq 0 ]; then
-                          echo "   ✅ Mot de passe admin Keycloak synchronise."
-                        else
-                          echo "   ⚠️  Login admin echoue (code: ${KC_RETRY}). Verifiez manuellement."
-                          # Debug: afficher les logs Keycloak recents pour comprendre l'echec
-                          docker compose -f docker-compose.prod.yml --env-file .env logs --tail=30 keycloak 2>&1 | tail -20 || true
-                        fi
-                      else
-                        echo "   ⚠️  Impossible de generer le hash PBKDF2 (openssl kdf non disponible?). Verifiez manuellement."
-                      fi
-                    else
-                      echo "   ⚠️  Utilisateur admin non trouve en base Keycloak."
-                    fi
-                  else
-                    echo "   ✅ Mot de passe admin Keycloak OK."
-                  fi
-                fi
-
-              else
-                echo "   ❌ keycloak readiness HTTP: KO"
-                docker compose -f docker-compose.prod.yml --env-file .env logs --tail=120 keycloak || true
-                FAILED=1
-              fi
-            fi
-
-            # --- Diagnostic des permissions (Clenzy DB) ---
-            echo ""
-            echo "🔍 Diagnostic permissions (base Clenzy)..."
-            echo "   Nombre de permissions en base :"
-            docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-              psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -tAc \
-              "SELECT count(*) FROM permissions;" 2>/dev/null || echo "   ⚠️  Impossible de compter les permissions"
-            echo "   Permissions du role ADMIN :"
-            docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-              psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -tAc \
-              "SELECT p.name FROM role_permissions rp JOIN permissions p ON rp.permission_id = p.id JOIN roles r ON rp.role_id = r.id WHERE r.name = 'ADMIN' AND rp.is_active = true ORDER BY p.name;" 2>/dev/null || echo "   ⚠️  Impossible de lister les permissions ADMIN"
-            echo "   Roles existants :"
-            docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-              psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -tAc \
-              "SELECT name FROM roles ORDER BY name;" 2>/dev/null || echo "   ⚠️  Impossible de lister les roles"
-            echo "   role_permissions avec is_active NULL :"
-            docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
-              psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -tAc \
-              "SELECT count(*) FROM role_permissions WHERE is_active IS NULL;" 2>/dev/null || echo "   ⚠️  N/A"
-            echo "   Logs backend (permissions) :"
-            docker compose -f docker-compose.prod.yml --env-file .env logs --tail=50 pms-server 2>&1 | grep -iE "(Permission|Verification des permissions|creee|associee|initPermissions)" | tail -20 || echo "   (aucun log permission trouve)"
-
-            echo ""
-            if [ $FAILED -eq 1 ]; then
-              echo "⚠️  Certains services ne sont pas en bonne santé !"
-              echo "   Vérifiez les logs : docker compose -f docker-compose.prod.yml logs"
-              exit 1
-            else
-              echo "✅ Tous les services sont opérationnels !"
-              echo ""
-              echo "🌐 Services accessibles :"
-              echo "   - Landing   : https://clenzy.fr"
-              echo "   - PMS       : https://app.clenzy.fr"
-              echo "   - API       : https://app.clenzy.fr/api"
-              echo "   - Auth      : https://auth.clenzy.fr"
-            fi
+            # Charger .env puis lancer le script de deploiement
+            set -a; . ./.env; set +a
+            export DEPLOY_MODE DEPLOY_SERVICES
+            chmod +x scripts/deploy.sh
+            bash scripts/deploy.sh
