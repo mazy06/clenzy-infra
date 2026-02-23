@@ -251,10 +251,35 @@ jobs:
             SERVICES="${{ github.event.client_payload.services || github.event.client_payload.service || github.event.inputs.services || '' }}"
             SERVICES_LIST=$(echo "$SERVICES" | tr ',' ' ')
 
+            # --- Deploiement par phases ---
+            # Phase 1 : postgres + redis (base infra) demarres EN PREMIER
+            # Phase 2 : tous les autres services (keycloak, pms-server, etc.)
+            # Cela evite le race condition ou keycloak/pms-server demarrent
+            # avant que postgres soit pret (surtout apres pull d'une nouvelle image).
+
             if [ "$DEPLOY_MODE" = "full-rebuild" ]; then
               echo "🔄 Rebuild complet de tous les services..."
               docker compose -f docker-compose.prod.yml --env-file .env pull
-              docker compose -f docker-compose.prod.yml --env-file .env up -d --force-recreate
+              # Arret propre de tous les containers
+              echo "   Arret de tous les services..."
+              docker compose -f docker-compose.prod.yml --env-file .env down --timeout 30
+              # Phase 1 : demarrer postgres + redis
+              echo "   Phase 1 — Demarrage PostgreSQL + Redis..."
+              docker compose -f docker-compose.prod.yml --env-file .env up -d postgres redis
+              PG_PHASE=0
+              until docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
+                pg_isready -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" >/dev/null 2>&1; do
+                PG_PHASE=$((PG_PHASE + 1))
+                if [ "$PG_PHASE" -ge 30 ]; then
+                  echo "❌ PostgreSQL non pret apres rebuild."
+                  exit 1
+                fi
+                sleep 2
+              done
+              echo "   ✅ PostgreSQL pret."
+              # Phase 2 : demarrer tous les services restants
+              echo "   Phase 2 — Demarrage de tous les services..."
+              docker compose -f docker-compose.prod.yml --env-file .env up -d
               HEALTH_SERVICES="nginx pms-server pms-client landing postgres redis keycloak kafka"
             else
               if [ -n "$SERVICES_LIST" ]; then
@@ -265,6 +290,22 @@ jobs:
               else
                 echo "📦 Mise à jour de tous les services..."
                 docker compose -f docker-compose.prod.yml --env-file .env pull
+                # Phase 1 : demarrer postgres + redis en premier
+                echo "   Phase 1 — Infrastructure de base (postgres, redis)..."
+                docker compose -f docker-compose.prod.yml --env-file .env up -d postgres redis
+                PG_PHASE=0
+                until docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
+                  pg_isready -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" >/dev/null 2>&1; do
+                  PG_PHASE=$((PG_PHASE + 1))
+                  if [ "$PG_PHASE" -ge 30 ]; then
+                    echo "❌ PostgreSQL non pret apres mise a jour."
+                    exit 1
+                  fi
+                  sleep 2
+                done
+                echo "   ✅ PostgreSQL pret."
+                # Phase 2 : demarrer tous les services restants
+                echo "   Phase 2 — Demarrage de tous les services..."
                 docker compose -f docker-compose.prod.yml --env-file .env up -d
                 HEALTH_SERVICES="nginx pms-server pms-client landing postgres redis keycloak kafka"
               fi
