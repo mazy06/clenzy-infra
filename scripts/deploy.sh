@@ -138,6 +138,29 @@ else
 fi
 
 # ===========================================
+# 3b. Detection crash-loop + force-recreate
+# ===========================================
+# docker compose up -d ne recree PAS les containers dont la config n'a
+# pas change. Si un service etait deja en crash-loop (deploy precedent
+# echoue), il reste bloque. On detecte et on force-recreate.
+
+CRASH_LOOP_FIXED=0
+for SVC in keycloak pms-server pgbouncer; do
+  SVC_STATE=$($DC ps --format '{{.State}}' "$SVC" 2>/dev/null || echo "not found")
+  if [ "$SVC_STATE" = "restarting" ]; then
+    echo "   ⚠️  $SVC en crash-loop, recreation forcee..."
+    $DC up -d --force-recreate --no-deps "$SVC"
+    CRASH_LOOP_FIXED=1
+  fi
+done
+
+if [ "$CRASH_LOOP_FIXED" -eq 1 ]; then
+  echo "   Attente de PostgreSQL apres force-recreate..."
+  wait_pg "post-force-recreate"
+  sleep 5
+fi
+
+# ===========================================
 # 4. Nettoyage + Nginx reload
 # ===========================================
 
