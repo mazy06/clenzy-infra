@@ -238,9 +238,11 @@ services:
         condition: service_healthy
     volumes:
       - ./keycloak/realm-clenzy.json:/opt/keycloak/data/import/realm-clenzy.json
+      - ./keycloak/entrypoint-wrapper.sh:/opt/entrypoint-wrapper.sh:ro
     expose:
       - "8080"
-    command: start --import-realm
+    entrypoint: ["/opt/entrypoint-wrapper.sh"]
+    command: ["start", "--import-realm"]
     networks:
       clenzy-network:
         aliases:

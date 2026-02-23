@@ -138,26 +138,33 @@ else
 fi
 
 # ===========================================
-# 3b. Detection crash-loop + force-recreate
+# 3b. Detection crash-loop + recovery
 # ===========================================
-# docker compose up -d ne recree PAS les containers dont la config n'a
-# pas change. Si un service etait deja en crash-loop (deploy precedent
-# echoue), il reste bloque. On detecte et on force-recreate.
+# Delai pour laisser les services demarrer et potentiellement crasher.
+# Keycloak est protege par le wrapper entrypoint mais on garde ce filet
+# de securite pour tous les services critiques.
+# On utilise stop + rm + up -d (au lieu de --force-recreate --no-deps)
+# pour respecter les depends_on et obtenir un container propre.
+
+echo "   Stabilisation post-deploy (15s)..."
+sleep 15
 
 CRASH_LOOP_FIXED=0
 for SVC in keycloak pms-server pgbouncer; do
   SVC_STATE=$($DC ps --format '{{.State}}' "$SVC" 2>/dev/null || echo "not found")
   if [ "$SVC_STATE" = "restarting" ]; then
-    echo "   ⚠️  $SVC en crash-loop, recreation forcee..."
-    $DC up -d --force-recreate --no-deps "$SVC"
+    echo "   ⚠️  $SVC en crash-loop, arret + recreation..."
+    $DC stop "$SVC" 2>/dev/null || true
+    $DC rm -f "$SVC" 2>/dev/null || true
+    sleep 3
+    $DC up -d "$SVC"
     CRASH_LOOP_FIXED=1
   fi
 done
 
 if [ "$CRASH_LOOP_FIXED" -eq 1 ]; then
-  echo "   Attente de PostgreSQL apres force-recreate..."
-  wait_pg "post-force-recreate"
-  sleep 5
+  echo "   Attente apres recovery (10s)..."
+  sleep 10
 fi
 
 # ===========================================
