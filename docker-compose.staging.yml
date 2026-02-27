@@ -150,6 +150,64 @@ services:
           - clenzy-keycloak
 
   # ==========================================
+  # MESSAGE BROKER (Kafka + KRaft)
+  # ==========================================
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: clenzy-kafka-staging
+    hostname: clenzy-kafka
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@clenzy-kafka:29093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:29093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://clenzy-kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      CLUSTER_ID: ${KAFKA_CLUSTER_ID:-CHANGE_ME_kafka_cluster_id}
+    volumes:
+      - kafka-data-staging:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 90s
+    networks:
+      - clenzy-network-staging
+
+  # ==========================================
+  # LIBREOFFICE (Conversion ODT -> PDF)
+  # ==========================================
+
+  libreoffice:
+    image: gotenberg/gotenberg:8
+    container_name: clenzy-libreoffice-staging
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3000/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      clenzy-network-staging:
+        aliases:
+          - clenzy-libreoffice
+
+  # ==========================================
   # PMS (Application métier)
   # ==========================================
 
@@ -180,6 +238,10 @@ services:
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
       STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      # Kafka
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: clenzy-kafka:9092
+      # Jasypt
+      JASYPT_ENCRYPTOR_PASSWORD: ${JASYPT_ENCRYPTOR_PASSWORD}
       # Mail SMTP (envoi)
       MAIL_HOST: ${MAIL_HOST:-mail.clenzy.fr}
       MAIL_PORT: ${MAIL_PORT:-465}
@@ -202,6 +264,14 @@ services:
         condition: service_started
       redis:
         condition: service_healthy
+      kafka:
+        condition: service_healthy
+      libreoffice:
+        condition: service_healthy
+    volumes:
+      - contact-uploads-staging:/app/uploads/contact
+      - document-templates-staging:/app/uploads/templates
+      - document-generated-staging:/app/uploads/documents
     networks:
       clenzy-network-staging:
         aliases:
@@ -263,8 +333,12 @@ services:
 volumes:
   postgres-data-staging:
   redis-data-staging:
+  kafka-data-staging:
   certbot-webroot-staging:
   certbot-certs-staging:
+  contact-uploads-staging:
+  document-templates-staging:
+  document-generated-staging:
   prometheus-data-staging:
   grafana-data-staging:
 

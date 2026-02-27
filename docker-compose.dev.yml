@@ -69,7 +69,7 @@ services:
   # PgBouncer — Connection Pooling (dev)
   # Niveau 8 — Scalabilite : meme config qu'en prod pour tester localement
   pgbouncer:
-    image: edoburu/pgbouncer:1.22.0
+    image: edoburu/pgbouncer:v1.23.1-p3
     container_name: clenzy-pgbouncer-dev
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -294,6 +294,8 @@ services:
       FRONTEND_URL: http://localhost:3000
       # Jasypt (chiffrement tokens Airbnb en base)
       JASYPT_ENCRYPTOR_PASSWORD: ${JASYPT_ENCRYPTOR_PASSWORD:-dev-jasypt-secret-key}
+      # JaCoCo — chemin vers le rapport monte en volume
+      CLENZY_JACOCO_REPORT_PATH: /app/jacoco/jacoco.xml
     ports:
       - "8084:8080"
     depends_on:
@@ -311,6 +313,7 @@ services:
       - contact-uploads-dev:/app/uploads/contact
       - document-templates-dev:/app/uploads/templates
       - document-generated-dev:/app/uploads/documents
+      - ../clenzy/server/target/site/jacoco:/app/jacoco:ro
     networks:
       clenzy-network:
         aliases:
@@ -329,6 +332,7 @@ services:
         VITE_KEYCLOAK_CLIENT_ID: clenzy-web
         VITE_APP_NAME: Clenzy
         VITE_APP_VERSION: 1.0.0
+        VITE_STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY}
     container_name: clenzy-frontend-dev
     ports:
       - "3000:80"

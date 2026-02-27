@@ -75,15 +75,15 @@
 - [ ] Merger `main` vers `production` dans les 3 repos :
   ```bash
   # clenzy
-  cd ~/Desktop/env/projets/clenzy
+  cd ~/Desktop/env/projets/sinatech/clenzy
   git checkout production && git merge main && git push origin production
 
   # clenzy-landingpage
-  cd ~/Desktop/env/projets/clenzy-landingpage
+  cd ~/Desktop/env/projets/sinatech/clenzy-landingpage
   git checkout production && git merge main && git push origin production
 
   # clenzy-infra
-  cd ~/Desktop/env/projets/clenzy-infra
+  cd ~/Desktop/env/projets/sinatech/clenzy-infra
   git checkout production && git merge main && git push origin production
   ```
 

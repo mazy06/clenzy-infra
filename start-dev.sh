@@ -42,9 +42,18 @@ echo ""
 echo "🛑 Arrêt des services existants..."
 docker compose -f docker-compose.dev.yml --env-file .env.dev down --remove-orphans 2>/dev/null || true
 
-# Forcer le rebuild du frontend sans cache (pour toujours inclure les derniers changements)
-echo "🧹 Reconstruction du frontend (sans cache)..."
-docker compose -f docker-compose.dev.yml --env-file .env.dev build --no-cache pms-client
+# ─── Nettoyage Docker pour éviter ENOSPC (no space left on device) ───────
+echo "🧹 Nettoyage Docker (images orphelines, caches build, containers arrêtés)..."
+# Supprimer les containers arrêtés, réseaux orphelins, images pendantes et cache build
+docker system prune -f 2>/dev/null || true
+# Supprimer spécifiquement le cache BuildKit qui grossit à chaque --no-cache
+docker builder prune -f 2>/dev/null || true
+echo "   ✅ Nettoyage terminé"
+echo ""
+
+# Forcer le rebuild du frontend et du backend sans cache (pour toujours inclure les derniers changements)
+echo "🔨 Reconstruction du frontend et du backend (sans cache)..."
+docker compose -f docker-compose.dev.yml --env-file .env.dev build --no-cache pms-client pms-server
 
 # Démarrage de tous les services
 echo "🐳 Démarrage des conteneurs..."

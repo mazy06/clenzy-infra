@@ -73,5 +73,24 @@
       ],
       "enabled": true
     }
-  ]
+  ],
+  "scopeMappings": [
+    {
+      "clientScope": "clenzy-api",
+      "roles": ["ADMIN"]
+    }
+  ],
+  "clientScopeMappings": {
+    "realm-management": [
+      {
+        "client": "clenzy-api",
+        "roles": [
+          "manage-users",
+          "view-users",
+          "manage-realm",
+          "view-realm"
+        ]
+      }
+    ]
+  }
 }
