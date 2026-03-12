@@ -372,7 +372,8 @@ http {
         }
 
         # Block common scanner/exploit routes (return 444 = drop connection silently)
-        location ~* ^/(webhook|login|admin|wp-|xmlrpc|cgi-bin|\.env|actuator|phpmyadmin|setup|install|config|api/v1/push) {
+        # Note: /login et /admin sont des routes légitimes de Grafana, on ne les bloque PAS ici
+        location ~* ^/(webhook|wp-|xmlrpc|cgi-bin|\.env|actuator|phpmyadmin|setup|install|config|api/v1/push) {
             access_log off;
             return 444;
         }
