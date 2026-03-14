@@ -88,9 +88,10 @@ fi
 # 3. Deploiement par phases
 # ===========================================
 # Phase 1 : postgres + redis (base infra) demarres EN PREMIER
+# Phase 1b: kafka (messaging) demarre apres postgres, attend healthy
 # Phase 2 : tous les autres services (keycloak, pms-server, etc.)
 # Evite le race condition ou keycloak/pms-server demarrent
-# avant que postgres soit pret (surtout apres pull d'une nouvelle image).
+# avant que postgres/kafka soient prets (surtout apres pull d'une nouvelle image).
 
 SERVICES_LIST=$(echo "${DEPLOY_SERVICES}" | tr ',' ' ')
 
@@ -108,6 +109,22 @@ wait_pg() {
   echo "   ✅ PostgreSQL pret."
 }
 
+wait_kafka() {
+  local label="$1"
+  local attempt=0
+  local max_attempts=24  # 24 x 5s = 120s max
+  echo "   Attente de Kafka ($label)..."
+  until docker exec clenzy-kafka-prod kafka-broker-api-versions --bootstrap-server localhost:9092 >/dev/null 2>&1; do
+    attempt=$((attempt + 1))
+    if [ "$attempt" -ge "$max_attempts" ]; then
+      echo "   ⚠️  Kafka non pret apres ${max_attempts} tentatives ($label). Poursuite du deploiement..."
+      return 1
+    fi
+    sleep 5
+  done
+  echo "   ✅ Kafka pret."
+}
+
 if [ "$DEPLOY_MODE" = "full-rebuild" ]; then
   echo "🔄 Rebuild complet de tous les services..."
   $DC pull
@@ -116,6 +133,9 @@ if [ "$DEPLOY_MODE" = "full-rebuild" ]; then
   echo "   Phase 1 — Demarrage PostgreSQL + Redis..."
   $DC up -d postgres redis
   wait_pg "apres rebuild"
+  echo "   Phase 1b — Demarrage Kafka..."
+  $DC up -d kafka
+  wait_kafka "apres rebuild"
   echo "   Phase 2 — Demarrage de tous les services..."
   $DC up -d
   HEALTH_SERVICES="nginx pms-server pms-client landing postgres redis keycloak kafka"
@@ -136,6 +156,9 @@ else
     # Les donnees sont preservees (volume nomme postgres-data-prod).
     $DC up -d --force-recreate postgres redis
     wait_pg "apres mise a jour"
+    echo "   Phase 1b — Demarrage Kafka..."
+    $DC up -d kafka
+    wait_kafka "apres mise a jour"
     echo "   Phase 2 — Demarrage de tous les services..."
     $DC up -d
     HEALTH_SERVICES="nginx pms-server pms-client landing postgres redis keycloak kafka"

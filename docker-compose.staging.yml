@@ -172,7 +172,8 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_LOG_RETENTION_HOURS: 168
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
-      CLUSTER_ID: ${KAFKA_CLUSTER_ID:-CHANGE_ME_kafka_cluster_id}
+      # KRaft cluster id — OBLIGATOIRE, doit être un UUID base64 valide (22 chars).
+      CLUSTER_ID: ${KAFKA_CLUSTER_ID:?KAFKA_CLUSTER_ID manquant dans .env — voir .env.example}
     volumes:
       - kafka-data-staging:/var/lib/kafka/data
     healthcheck:
