@@ -120,11 +120,12 @@ jobs:
 
             INFRA_DIR="${DEPLOY_INFRA_DIR:-$HOME/clenzy-infra}"
             REPO_URL="https://github.com/${DEPLOY_REPO}.git"
+            REPO_URL_AUTH="https://x-access-token:${DEPLOY_GHCR_TOKEN}@github.com/${DEPLOY_REPO}.git"
 
             if [ ! -d "$INFRA_DIR/.git" ]; then
               echo "📁 Dossier infra absent, bootstrap du repo..."
               mkdir -p "$(dirname "$INFRA_DIR")"
-              git clone "$REPO_URL" "$INFRA_DIR"
+              git clone "$REPO_URL_AUTH" "$INFRA_DIR"
             fi
 
             cd "$INFRA_DIR"
@@ -133,8 +134,10 @@ jobs:
             echo "$DEPLOY_GHCR_TOKEN" | docker login ghcr.io -u "$DEPLOY_GHCR_OWNER" --password-stdin
 
             echo "📥 Mise a jour du repo infrastructure..."
+            git remote set-url origin "$REPO_URL_AUTH"
             git fetch origin production
             git reset --hard origin/production
+            git remote set-url origin "$REPO_URL"
 
             # --- Provisioning .env ---
             if [ "$DEPLOY_FORCE_ENV" = "true" ]; then
