@@ -273,9 +273,9 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_LOG_RETENTION_HOURS: 720
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
-      # KRaft cluster id — OBLIGATOIRE, doit être un UUID base64 valide (22 chars).
-      # Générer avec : head -c 16 /dev/urandom | base64 | head -c 22
-      CLUSTER_ID: ${KAFKA_CLUSTER_ID:?KAFKA_CLUSTER_ID manquant dans .env — voir .env.example}
+      # KRaft cluster id — OBLIGATOIRE, doit être un UUID base64 URL-safe (22 chars).
+      # Générer avec : head -c 16 /dev/urandom | base64 | tr '/+' '_-' | head -c 22
+      CLUSTER_ID: ${KAFKA_CLUSTER_ID}
     volumes:
       - kafka-data-prod:/var/lib/kafka/data
     healthcheck:

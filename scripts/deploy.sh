@@ -16,6 +16,16 @@ set -e
 DC="docker compose -f docker-compose.prod.yml --env-file .env"
 
 # ===========================================
+# 0. Pre-flight checks
+# ===========================================
+
+if [ -z "$KAFKA_CLUSTER_ID" ]; then
+  echo "❌ KAFKA_CLUSTER_ID manquant dans .env."
+  echo "   Generer avec : head -c 16 /dev/urandom | base64 | tr '/+' '_-' | head -c 22"
+  exit 1
+fi
+
+# ===========================================
 # 1. Bootstrap PostgreSQL & Keycloak DB
 # ===========================================
 
