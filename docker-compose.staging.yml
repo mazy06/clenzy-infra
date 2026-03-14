@@ -172,8 +172,9 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_LOG_RETENTION_HOURS: 168
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
-      # KRaft cluster id — OBLIGATOIRE, doit être un UUID base64 valide (22 chars).
-      CLUSTER_ID: ${KAFKA_CLUSTER_ID:?KAFKA_CLUSTER_ID manquant dans .env — voir .env.example}
+      # KRaft cluster id — OBLIGATOIRE, doit être un UUID base64 URL-safe (22 chars).
+      # Générer avec : head -c 16 /dev/urandom | base64 | tr '/+' '_-' | head -c 22
+      CLUSTER_ID: ${KAFKA_CLUSTER_ID}
     volumes:
       - kafka-data-staging:/var/lib/kafka/data
     healthcheck:
@@ -248,6 +249,10 @@ services:
       MAIL_PORT: ${MAIL_PORT:-465}
       MAIL_USERNAME: ${MAIL_USERNAME:-info@clenzy.fr}
       MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      # SSL/STARTTLS — Port 465: SSL=true STARTTLS=false / Port 587: SSL=false STARTTLS=true
+      MAIL_SMTP_SSL_ENABLE: ${MAIL_SMTP_SSL_ENABLE:-false}
+      MAIL_SMTP_STARTTLS_ENABLE: ${MAIL_SMTP_STARTTLS_ENABLE:-true}
+      MAIL_SMTP_STARTTLS_REQUIRED: ${MAIL_SMTP_STARTTLS_REQUIRED:-true}
       # Mail IMAP (réception)
       IMAP_HOST: ${IMAP_HOST:-mail.clenzy.fr}
       IMAP_PORT: ${IMAP_PORT:-993}
