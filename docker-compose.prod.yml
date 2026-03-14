@@ -111,6 +111,7 @@ services:
       postgres
       -c config_file=/etc/postgresql/postgresql.conf
       -c hba_file=/etc/postgresql/pg_hba_replication.conf
+      -c listen_addresses='*'
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
@@ -272,8 +273,9 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_LOG_RETENTION_HOURS: 720
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
-      # KRaft cluster id must be a valid base64 UUID-like token (22 chars).
-      CLUSTER_ID: ${KAFKA_CLUSTER_ID:-CHANGE_ME_kafka_cluster_id}
+      # KRaft cluster id — OBLIGATOIRE, doit être un UUID base64 valide (22 chars).
+      # Générer avec : head -c 16 /dev/urandom | base64 | head -c 22
+      CLUSTER_ID: ${KAFKA_CLUSTER_ID:?KAFKA_CLUSTER_ID manquant dans .env — voir .env.example}
     volumes:
       - kafka-data-prod:/var/lib/kafka/data
     healthcheck:
@@ -344,6 +346,8 @@ services:
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
       SPRING_LIQUIBASE_ENABLED: "false"
       FRONTEND_URL: https://app.clenzy.fr
+      # Mapbox (carte dans les emails check-in)
+      MAPBOX_ACCESS_TOKEN: ${MAPBOX_ACCESS_TOKEN:-}
       STRIPE_CURRENCY: eur
       STRIPE_SUCCESS_URL: https://app.clenzy.fr/interventions/payment/success?session_id={CHECKOUT_SESSION_ID}
       STRIPE_CANCEL_URL: https://app.clenzy.fr/interventions/payment/cancel
