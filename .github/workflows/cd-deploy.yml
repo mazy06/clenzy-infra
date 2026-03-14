@@ -101,6 +101,7 @@ jobs:
           DEPLOY_REPO: ${{ github.repository }}
           DEPLOY_GHCR_OWNER: ${{ github.repository_owner }}
           DEPLOY_GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          DEPLOY_GIT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEPLOY_ENV_B64: ${{ secrets.PROD_ENV_FILE_B64 }}
           DEPLOY_FORCE_ENV: ${{ github.event.client_payload.force_env_sync || github.event.inputs.force_env_sync || 'false' }}
           DEPLOY_MODE: ${{ github.event.client_payload.deploy_mode || github.event.inputs.deploy_mode || 'update' }}
@@ -110,7 +111,7 @@ jobs:
           username: ${{ secrets.VPS_USER != '' && secrets.VPS_USER || vars.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT || 22 }}
-          envs: DEPLOY_INFRA_DIR,DEPLOY_REPO,DEPLOY_GHCR_OWNER,DEPLOY_GHCR_TOKEN,DEPLOY_ENV_B64,DEPLOY_FORCE_ENV,DEPLOY_MODE,DEPLOY_SERVICES
+          envs: DEPLOY_INFRA_DIR,DEPLOY_REPO,DEPLOY_GHCR_OWNER,DEPLOY_GHCR_TOKEN,DEPLOY_GIT_TOKEN,DEPLOY_ENV_B64,DEPLOY_FORCE_ENV,DEPLOY_MODE,DEPLOY_SERVICES
           command_timeout: 30m
           script: |
             set -e
@@ -120,7 +121,7 @@ jobs:
 
             INFRA_DIR="${DEPLOY_INFRA_DIR:-$HOME/clenzy-infra}"
             REPO_URL="https://github.com/${DEPLOY_REPO}.git"
-            REPO_URL_AUTH="https://x-access-token:${DEPLOY_GHCR_TOKEN}@github.com/${DEPLOY_REPO}.git"
+            REPO_URL_AUTH="https://x-access-token:${DEPLOY_GIT_TOKEN}@github.com/${DEPLOY_REPO}.git"
 
             if [ ! -d "$INFRA_DIR/.git" ]; then
               echo "📁 Dossier infra absent, bootstrap du repo..."
