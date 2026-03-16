@@ -292,6 +292,8 @@ services:
       STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
       FRONTEND_URL: http://localhost:3000
+      # Mapbox (carte dans les emails check-in)
+      MAPBOX_ACCESS_TOKEN: ${MAPBOX_ACCESS_TOKEN:-}
       # Jasypt (chiffrement tokens Airbnb en base)
       JASYPT_ENCRYPTOR_PASSWORD: ${JASYPT_ENCRYPTOR_PASSWORD:-dev-jasypt-secret-key}
       # JaCoCo — chemin vers le rapport monte en volume
