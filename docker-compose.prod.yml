@@ -434,6 +434,12 @@ services:
     build:
       context: ../clenzy/client
       dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: https://app.clenzy.fr
+        VITE_KEYCLOAK_URL: https://auth.clenzy.fr
+        VITE_KEYCLOAK_REALM: clenzy
+        VITE_KEYCLOAK_CLIENT_ID: clenzy-web
+        VITE_STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY}
     container_name: clenzy-client-prod
     restart: unless-stopped
     expose:
