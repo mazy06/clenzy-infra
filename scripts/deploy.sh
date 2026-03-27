@@ -156,6 +156,8 @@ wait_kafka() {
 
 if [ "$DEPLOY_MODE" = "full-rebuild" ]; then
   echo "🔄 Rebuild complet de tous les services..."
+  echo "   Build des images locales (pms-client, pms-server)..."
+  $DC build --no-cache pms-client pms-server
   $DC pull
   echo "   Arret de tous les services..."
   $DC down --timeout 30
