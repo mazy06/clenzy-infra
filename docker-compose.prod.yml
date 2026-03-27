@@ -387,12 +387,12 @@ services:
       AIRBNB_CLIENT_SECRET: ${AIRBNB_CLIENT_SECRET:-}
       AIRBNB_REDIRECT_URI: https://${APP_DOMAIN}/api/airbnb/callback
       AIRBNB_WEBHOOK_SECRET: ${AIRBNB_WEBHOOK_SECRET:-}
-      # Mail SMTP (envoi)
-      MAIL_HOST: ${MAIL_HOST:-mail.clenzy.fr}
-      MAIL_PORT: ${MAIL_PORT:-465}
-      MAIL_USERNAME: ${MAIL_USERNAME:-info@clenzy.fr}
+      # Mail SMTP (envoi via Brevo)
+      MAIL_HOST: ${MAIL_HOST:-smtp-relay.brevo.com}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-a27b10001@smtp-brevo.com}
       MAIL_PASSWORD: ${MAIL_PASSWORD:-}
-      # SSL/STARTTLS — Port 465: SSL=true STARTTLS=false / Port 587: SSL=false STARTTLS=true
+      # Brevo: port 587 STARTTLS
       MAIL_SMTP_SSL_ENABLE: ${MAIL_SMTP_SSL_ENABLE:-false}
       MAIL_SMTP_STARTTLS_ENABLE: ${MAIL_SMTP_STARTTLS_ENABLE:-true}
       MAIL_SMTP_STARTTLS_REQUIRED: ${MAIL_SMTP_STARTTLS_REQUIRED:-true}

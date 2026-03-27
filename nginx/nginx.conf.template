@@ -77,7 +77,7 @@ http {
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
-    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src 'self' https://*.${DOMAIN} https://geo.api.gouv.fr; frame-src 'self' https://auth.${DOMAIN}; frame-ancestors 'self' https://auth.${DOMAIN}" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src 'self' https://*.${DOMAIN} https://geo.api.gouv.fr https://eu.i.posthog.com https://ipapi.co https://api.stripe.com https://open.er-api.com; frame-src 'self' https://auth.${DOMAIN} https://js.stripe.com; frame-ancestors 'self' https://auth.${DOMAIN}" always;
     add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
 
     # WebSocket : n'envoyer Connection "upgrade" que si le client le demande.
@@ -89,7 +89,7 @@ http {
     }
 
     # Rate limiting
-    limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
+    limit_req_zone $binary_remote_addr zone=api:10m rate=30r/s;
     limit_req_zone $binary_remote_addr zone=auth:10m rate=20r/s;
     limit_req_zone $binary_remote_addr zone=general:10m rate=30r/s;
     limit_req_zone $binary_remote_addr zone=monitoring:10m rate=5r/s;
@@ -223,7 +223,7 @@ http {
         add_header X-Content-Type-Options "nosniff" always;
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
         add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src 'self' https://*.${DOMAIN} https://geo.api.gouv.fr; frame-src 'self' https://auth.${DOMAIN}; frame-ancestors 'self' https://auth.${DOMAIN}" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src 'self' https://*.${DOMAIN} https://geo.api.gouv.fr https://eu.i.posthog.com https://ipapi.co https://api.stripe.com https://open.er-api.com; frame-src 'self' https://auth.${DOMAIN} https://js.stripe.com; frame-ancestors 'self' https://auth.${DOMAIN}" always;
         add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
 
         # SSL
@@ -237,7 +237,7 @@ http {
 
         # API Backend (Spring Boot)
         location /api/ {
-            limit_req zone=api burst=20 nodelay;
+            limit_req zone=api burst=60 nodelay;
 
             set $pms_backend_upstream http://clenzy-server:8080;
             proxy_pass $pms_backend_upstream;
