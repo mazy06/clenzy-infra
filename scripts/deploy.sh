@@ -86,6 +86,25 @@ fi
 echo "   ✅ Base Keycloak OK."
 
 # ===========================================
+# 1b. Mise a jour du repo applicatif (clenzy)
+# ===========================================
+# Le docker-compose.prod.yml reference ../clenzy/client et ../clenzy/server
+# pour les builds. Il faut synchroniser ce repo avec la branche production.
+
+CLENZY_APP_DIR="$(cd .. && pwd)/clenzy"
+if [ -d "$CLENZY_APP_DIR/.git" ]; then
+  echo "📥 Mise a jour du repo applicatif ($CLENZY_APP_DIR)..."
+  cd "$CLENZY_APP_DIR"
+  git fetch origin production
+  git checkout production 2>/dev/null || git checkout -b production origin/production
+  git reset --hard origin/production
+  echo "   ✅ Repo clenzy mis a jour : $(git log --oneline -1)"
+  cd - >/dev/null
+else
+  echo "⚠️  Repo applicatif non trouve ($CLENZY_APP_DIR). Les builds utiliseront la version existante."
+fi
+
+# ===========================================
 # 2. Backup pre-deploiement
 # ===========================================
 
