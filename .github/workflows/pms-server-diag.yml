@@ -1,0 +1,66 @@
+# ===========================================
+# Clenzy - PMS Server Diagnostics
+# ===========================================
+# Workflow d'observation manuel : recupere les logs et l'etat de
+# `pms-server` en prod. Utile quand le container est en restart-loop
+# ou quand l'API repond pas. Aucune modification, lecture seule.
+
+name: PMS Server Diag
+
+on:
+  workflow_dispatch:
+    inputs:
+      tail:
+        description: 'Nombre de lignes de log a afficher'
+        required: true
+        default: '300'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  diag:
+    name: Dump pms-server logs and state
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Fetch pms-server logs and container state
+        uses: appleboy/ssh-action@v1
+        env:
+          INFRA_DIR_VALUE: ${{ vars.VPS_INFRA_DIR }}
+          TAIL: ${{ inputs.tail }}
+        with:
+          host: ${{ secrets.VPS_HOST != '' && secrets.VPS_HOST || vars.VPS_HOST }}
+          username: ${{ secrets.VPS_USER != '' && secrets.VPS_USER || vars.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          envs: INFRA_DIR_VALUE,TAIL
+          command_timeout: 5m
+          script: |
+            set -e
+            INFRA_DIR="${INFRA_DIR_VALUE:-$HOME/clenzy-infra}"
+            DC="docker compose -f $INFRA_DIR/docker-compose.prod.yml --env-file $INFRA_DIR/.env"
+
+            echo "=========================================="
+            echo "Etat du container pms-server"
+            echo "=========================================="
+            $DC ps pms-server || true
+            echo ""
+            echo "Status detaille (docker inspect) :"
+            docker inspect clenzy-server-prod --format '{{.State.Status}} | restarting={{.State.Restarting}} | exitcode={{.State.ExitCode}} | startedAt={{.State.StartedAt}} | finishedAt={{.State.FinishedAt}} | restarts={{.RestartCount}}' 2>/dev/null || echo "container introuvable"
+
+            echo ""
+            echo "=========================================="
+            echo "Derniers $TAIL logs pms-server"
+            echo "=========================================="
+            $DC logs --tail="$TAIL" --no-color pms-server 2>&1 || true
+
+            echo ""
+            echo "=========================================="
+            echo "Filtre erreurs Spring/Liquibase"
+            echo "=========================================="
+            $DC logs --tail="$TAIL" --no-color pms-server 2>&1 \
+              | grep -iE "error|caused by|exception|failed|liquibase|validation|column|schema|migration" \
+              | tail -50 || echo "(aucun match)"
