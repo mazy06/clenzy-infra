@@ -1,0 +1,152 @@
+# ===========================================
+# Clenzy - Liquibase Bootstrap (one-shot)
+# ===========================================
+# A executer UNE SEULE FOIS, manuellement, avant d'activer Liquibase en prod.
+#
+# Contexte : la prod tourne avec `SPRING_LIQUIBASE_ENABLED=false` et
+# `SPRING_JPA_HIBERNATE_DDL_AUTO=update`. Le schema a ete cree au fil de l'eau
+# par Hibernate, donc la table `databasechangelog` n'existe pas et aucune des
+# migrations 0001-0107 n'y est tracee.
+#
+# Ce workflow :
+#   1. Lance un container Liquibase sur le reseau `clenzy-network`.
+#   2. Monte le dossier `server/src/main/resources/db/changelog` du repo
+#      applicatif (synchronise par cd-deploy.sh) en lecture seule.
+#   3. Execute `changelog-sync-to-tag pre-liquibase-baseline` pour marquer
+#      les changesets 0001 -> 0107a comme deja appliques (sans toucher au
+#      schema existant).
+#   4. Execute `update` pour appliquer les changesets posterieurs au tag
+#      (a ce stade : 0108 et eventuellement plus recents).
+#   5. Affiche un diagnostic du `databasechangelog`.
+#
+# Apres execution reussie, le PR clenzy-infra activant
+# `SPRING_LIQUIBASE_ENABLED=true` + `SPRING_JPA_HIBERNATE_DDL_AUTO=validate`
+# peut etre merge. Le pms-server redemarrera proprement.
+#
+# Pre-requis : le repo applicatif (clenzy) doit etre a jour sur le VPS et
+# contenir le tag changeset `0107a-tag-pre-liquibase-baseline` dans son
+# `db.changelog-master.yaml`. Si ce n'est pas le cas, declencher un CD Deploy
+# au prealable pour resynchroniser.
+
+name: Liquibase Bootstrap
+
+on:
+  workflow_dispatch:
+    inputs:
+      sync_tag:
+        description: "Tag jusqu'auquel marquer les changesets comme appliques (sans les executer)"
+        required: true
+        default: 'pre-liquibase-baseline'
+        type: string
+      liquibase_image:
+        description: 'Image Liquibase a utiliser (driver Postgres deja inclus)'
+        required: true
+        default: 'liquibase/liquibase:4.29.2'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    name: Bootstrap Liquibase changelog tracking
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Run Liquibase changelog-sync + update on VPS
+        uses: appleboy/ssh-action@v1
+        env:
+          INFRA_DIR_VALUE: ${{ vars.VPS_INFRA_DIR }}
+          SYNC_TAG: ${{ inputs.sync_tag }}
+          LIQUIBASE_IMAGE: ${{ inputs.liquibase_image }}
+        with:
+          host: ${{ secrets.VPS_HOST != '' && secrets.VPS_HOST || vars.VPS_HOST }}
+          username: ${{ secrets.VPS_USER != '' && secrets.VPS_USER || vars.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          envs: INFRA_DIR_VALUE,SYNC_TAG,LIQUIBASE_IMAGE
+          command_timeout: 15m
+          script: |
+            set -e
+
+            INFRA_DIR="${INFRA_DIR_VALUE:-$HOME/clenzy-infra}"
+            CLENZY_DIR="$(cd "$INFRA_DIR/.." && pwd)/clenzy"
+            CHANGELOG_DIR="$CLENZY_DIR/server/src/main/resources/db/changelog"
+            DC="docker compose -f $INFRA_DIR/docker-compose.prod.yml --env-file $INFRA_DIR/.env"
+
+            echo "=========================================="
+            echo "Liquibase Bootstrap"
+            echo "=========================================="
+            echo "INFRA_DIR    : $INFRA_DIR"
+            echo "CLENZY_DIR   : $CLENZY_DIR"
+            echo "CHANGELOG    : $CHANGELOG_DIR"
+            echo "SYNC_TAG     : $SYNC_TAG"
+            echo "IMAGE        : $LIQUIBASE_IMAGE"
+
+            if [ ! -f "$INFRA_DIR/.env" ]; then
+              echo "Fichier .env manquant dans $INFRA_DIR"; exit 1
+            fi
+            if [ ! -f "$CHANGELOG_DIR/db.changelog-master.yaml" ]; then
+              echo "Master changelog introuvable : $CHANGELOG_DIR/db.changelog-master.yaml"
+              echo "Declencher un CD Deploy pour resynchroniser le repo clenzy."
+              exit 1
+            fi
+            if ! grep -q "$SYNC_TAG" "$CHANGELOG_DIR/db.changelog-master.yaml"; then
+              echo "Le tag '$SYNC_TAG' n'est pas present dans le master changelog."
+              echo "Verifier que la branche production de clenzy contient le tag changeset."
+              exit 1
+            fi
+
+            set -a
+            . "$INFRA_DIR/.env"
+            set +a
+
+            if [ -z "$POSTGRES_USER" ] || [ -z "$POSTGRES_PASSWORD" ] || [ -z "$POSTGRES_DB" ]; then
+              echo "POSTGRES_USER/PASSWORD/DB manquant dans .env"; exit 1
+            fi
+
+            PG_STATE=$($DC ps --format '{{.State}}' postgres 2>/dev/null || echo "missing")
+            if [ "$PG_STATE" != "running" ]; then
+              echo "Container postgres non running (state=$PG_STATE). Abandon."
+              exit 1
+            fi
+
+            JDBC_URL="jdbc:postgresql://postgres:5432/${POSTGRES_DB}?sslmode=prefer"
+
+            run_liquibase() {
+              docker run --rm \
+                --network clenzy-network \
+                -v "$CHANGELOG_DIR":/liquibase/changelog:ro \
+                "$LIQUIBASE_IMAGE" \
+                --url="$JDBC_URL" \
+                --username="$POSTGRES_USER" \
+                --password="$POSTGRES_PASSWORD" \
+                --changelog-file=db.changelog-master.yaml \
+                --log-level=INFO \
+                "$@"
+            }
+
+            echo ""
+            echo "[1/4] Status (avant sync) :"
+            run_liquibase status --verbose || true
+
+            echo ""
+            echo "[2/4] changelog-sync-to-tag $SYNC_TAG"
+            run_liquibase changelog-sync-to-tag "$SYNC_TAG"
+
+            echo ""
+            echo "[3/4] update (applique les changesets posterieurs au tag)"
+            run_liquibase update
+
+            echo ""
+            echo "[4/4] Diagnostic :"
+            $DC exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c \
+              "SELECT id, author, exectype, dateexecuted, tag FROM databasechangelog ORDER BY orderexecuted DESC LIMIT 10;"
+            TOTAL=$($DC exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
+              "SELECT count(*) FROM databasechangelog;" | tr -d '[:space:]')
+            echo "Total changesets traces : $TOTAL"
+
+            echo ""
+            echo "Bootstrap termine. Prochaine etape : merger la PR qui active"
+            echo "SPRING_LIQUIBASE_ENABLED=true + SPRING_JPA_HIBERNATE_DDL_AUTO=validate."
