@@ -343,12 +343,15 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
-      # Liquibase est la source de verite des migrations (cf. CLAUDE.md).
-      # Hibernate ne fait QUE valider que le schema correspond aux entites JPA :
-      # toute divergence => erreur au demarrage (refus de demarrer avec un schema
-      # desynchronise). Ne PAS repasser en `update` sans coordonner avec Liquibase.
-      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
-      SPRING_LIQUIBASE_ENABLED: "true"
+      # ROLLBACK TEMPORAIRE (incident 2026-05-06) : pms-server crashait en
+      # restart-loop apres activation Liquibase (cause exacte a determiner via
+      # le workflow PMS Server Diag). La migration 0108 etant deja appliquee en
+      # base par le bootstrap, repasser en `update` permet a pms-server de
+      # demarrer et a la prod de tourner pendant qu'on diagnostique.
+      # A re-basculer en `validate` + `LIQUIBASE_ENABLED=true` une fois la
+      # cause profonde identifiee et corrigee.
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_LIQUIBASE_ENABLED: "false"
       FRONTEND_URL: https://app.clenzy.fr
       # Mapbox (carte dans les emails check-in)
       MAPBOX_ACCESS_TOKEN: ${MAPBOX_ACCESS_TOKEN:-}
