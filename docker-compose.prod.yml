@@ -343,8 +343,12 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
-      SPRING_JPA_HIBERNATE_DDL_AUTO: update
-      SPRING_LIQUIBASE_ENABLED: "false"
+      # Liquibase est la source de verite des migrations (cf. CLAUDE.md).
+      # Hibernate ne fait QUE valider que le schema correspond aux entites JPA :
+      # toute divergence => erreur au demarrage (refus de demarrer avec un schema
+      # desynchronise). Ne PAS repasser en `update` sans coordonner avec Liquibase.
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+      SPRING_LIQUIBASE_ENABLED: "true"
       FRONTEND_URL: https://app.clenzy.fr
       # Mapbox (carte dans les emails check-in)
       MAPBOX_ACCESS_TOKEN: ${MAPBOX_ACCESS_TOKEN:-}
