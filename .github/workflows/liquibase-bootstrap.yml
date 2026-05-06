@@ -114,10 +114,14 @@ jobs:
 
             JDBC_URL="jdbc:postgresql://postgres:5432/${POSTGRES_DB}?sslmode=prefer"
 
+            # WORKDIR par defaut de l'image liquibase est /liquibase, pas
+            # /liquibase/changelog. On force `-w` + chemin relatif pour que
+            # `relativeToChangelogFile: true` resolve correctement les sqlFile.
             run_liquibase() {
               docker run --rm \
                 --network clenzy-network \
                 -v "$CHANGELOG_DIR":/liquibase/changelog:ro \
+                -w /liquibase/changelog \
                 "$LIQUIBASE_IMAGE" \
                 --url="$JDBC_URL" \
                 --username="$POSTGRES_USER" \
