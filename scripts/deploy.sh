@@ -95,9 +95,22 @@ CLENZY_APP_DIR="$(cd .. && pwd)/clenzy"
 if [ -d "$CLENZY_APP_DIR/.git" ]; then
   echo "📥 Mise a jour du repo applicatif ($CLENZY_APP_DIR)..."
   cd "$CLENZY_APP_DIR"
+
+  # Defensive : les containers Docker (bind mounts) creent parfois des fichiers en root
+  # dans le working tree → git reset --hard echoue avec "Permission denied".
+  # On reprend la propriete recursivement avant les operations git.
+  if sudo -n chown -R "$(id -u):$(id -g)" . 2>/dev/null; then
+    echo "   🔧 Permissions reprises (chown defensif)."
+  else
+    echo "   ⚠️  Chown defensif ignore (sudo non disponible sans mot de passe)."
+    echo "      Si git reset echoue, configurer NOPASSWD pour l'utilisateur de deploiement."
+  fi
+
   git fetch origin production
   git checkout production 2>/dev/null || git checkout -b production origin/production
   git reset --hard origin/production
+  # Nettoyer les fichiers non suivis (hors gitignore) — evite les conflits au prochain pull
+  git clean -fd --quiet 2>/dev/null || true
   echo "   ✅ Repo clenzy mis a jour : $(git log --oneline -1)"
   cd - >/dev/null
 else
