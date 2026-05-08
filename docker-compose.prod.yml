@@ -343,14 +343,16 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
-      # Liquibase + Hibernate validate : reactives le 2026-05-08 apres
-      # diagnostic complet de l'incident du 2026-05-06. Le bootstrap
-      # (workflow Liquibase Bootstrap) a deja synchronise databasechangelog
-      # jusqu'au tag pre-liquibase-baseline (changesets 0001 -> 0108).
-      # Au prochain demarrage, Liquibase appliquera les changesets en
-      # attente (0109+) sur le schema pilote par les migrations.
-      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
-      SPRING_LIQUIBASE_ENABLED: "true"
+      # ROLLBACK URGENT (incident 2026-05-08, ~18h41) : la reactivation de
+      # Liquibase a fait crasher pms-server en restart-loop. ChangeSet 0060
+      # (`0060-nuki-integration`) tente de recreer la table `nuki_connections`
+      # qui existe deja (Liquibase l'enregistre avec exectype=EXECUTED depuis
+      # le bootstrap du 2026-05-06 mais le re-execute quand meme — checksum
+      # mismatch suspecte). Retour a l'etat fonctionnel (sauf /api/teams qui
+      # reste en 500 a cause du country missing) le temps d'identifier la
+      # cause exacte du checksum mismatch sur 0060 et corriger proprement.
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_LIQUIBASE_ENABLED: "false"
       FRONTEND_URL: https://app.clenzy.fr
       # Mapbox (carte dans les emails check-in)
       MAPBOX_ACCESS_TOKEN: ${MAPBOX_ACCESS_TOKEN:-}
