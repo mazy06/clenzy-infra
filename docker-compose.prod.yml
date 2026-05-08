@@ -343,14 +343,18 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
-      # Liquibase + Hibernate validate : reactives le 2026-05-08 apres reset
-      # des md5sums des changesets pre-baseline (workflow DB Migration sur
-      # `UPDATE databasechangelog SET md5sum = NULL WHERE orderexecuted <=
-      # orderexecuted_du_tag_pre-liquibase-baseline`). Au prochain boot,
-      # Liquibase recalcule les checksums sans re-executer les changesets
-      # deja appliques, puis applique les changesets en attente (0109+).
-      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
-      SPRING_LIQUIBASE_ENABLED: "true"
+      # ROLLBACK URGENT v2 (2026-05-08, ~19h05) : meme apres reset des md5sums
+      # a NULL via DB Migration (167 lignes), Liquibase 4.29.2 RE-EXECUTE
+      # quand meme 0060-nuki-integration au lieu de juste recalculer le
+      # checksum. Comportement non-standard a investiguer (peut-etre
+      # specifique a la version, peut-etre lie a la maniere dont
+      # changelog-sync-to-tag a ecrit la ligne pendant le bootstrap).
+      # Retour a Hibernate update + Liquibase off le temps de trouver une
+      # solution propre (probablement : ajouter `validCheckSum: ANY` sur les
+      # changesets pre-baseline, ou reinitialiser databasechangelog avec
+      # changelog-sync-to-tag).
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_LIQUIBASE_ENABLED: "false"
       FRONTEND_URL: https://app.clenzy.fr
       # Mapbox (carte dans les emails check-in)
       MAPBOX_ACCESS_TOKEN: ${MAPBOX_ACCESS_TOKEN:-}
