@@ -343,15 +343,14 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
-      # ROLLBACK TEMPORAIRE (incident 2026-05-06) : pms-server crashait en
-      # restart-loop apres activation Liquibase (cause exacte a determiner via
-      # le workflow PMS Server Diag). La migration 0108 etant deja appliquee en
-      # base par le bootstrap, repasser en `update` permet a pms-server de
-      # demarrer et a la prod de tourner pendant qu'on diagnostique.
-      # A re-basculer en `validate` + `LIQUIBASE_ENABLED=true` une fois la
-      # cause profonde identifiee et corrigee.
-      SPRING_JPA_HIBERNATE_DDL_AUTO: update
-      SPRING_LIQUIBASE_ENABLED: "false"
+      # Liquibase + Hibernate validate : reactives le 2026-05-08 apres
+      # diagnostic complet de l'incident du 2026-05-06. Le bootstrap
+      # (workflow Liquibase Bootstrap) a deja synchronise databasechangelog
+      # jusqu'au tag pre-liquibase-baseline (changesets 0001 -> 0108).
+      # Au prochain demarrage, Liquibase appliquera les changesets en
+      # attente (0109+) sur le schema pilote par les migrations.
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+      SPRING_LIQUIBASE_ENABLED: "true"
       FRONTEND_URL: https://app.clenzy.fr
       # Mapbox (carte dans les emails check-in)
       MAPBOX_ACCESS_TOKEN: ${MAPBOX_ACCESS_TOKEN:-}
