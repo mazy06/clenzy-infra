@@ -343,12 +343,21 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
-      # Liquibase + Hibernate validate : reactives le 2026-05-08 apres
-      # diagnostic complet de l'incident du 2026-05-06. Le bootstrap
-      # (workflow Liquibase Bootstrap) a deja synchronise databasechangelog
-      # jusqu'au tag pre-liquibase-baseline (changesets 0001 -> 0108).
-      # Au prochain demarrage, Liquibase appliquera les changesets en
-      # attente (0109+) sur le schema pilote par les migrations.
+      # Liquibase + Hibernate validate : reactives le 2026-05-09 (Option C)
+      # apres reset complet de databasechangelog via le workflow
+      # `Liquibase Reset + Sync` (clenzy-infra), qui a TRUNCATE puis
+      # re-execute `liquibase changelog-sync` pour reecrire toutes les
+      # rows avec des checksums propres. Cette approche resout le bug
+      # historique (PRs #37/#40/#41 reverties) ou Liquibase 4.29.2
+      # re-executait 0060-nuki-integration au boot a cause d'un etat
+      # hybride de databasechangelog (rows ecrites par changelog-sync-to-tag
+      # puis md5sums forces a NULL via raw SQL).
+      #
+      # Au prochain boot pms-server, Liquibase trouvera 116 rows dans
+      # databasechangelog avec des checksums coherents et n'executera
+      # aucun changeset. Hibernate validate verifiera que les entites
+      # JPA correspondent au schema (les colonnes legacy comme `url` sur
+      # property_photos ont ete dropped via 0114).
       SPRING_JPA_HIBERNATE_DDL_AUTO: validate
       SPRING_LIQUIBASE_ENABLED: "true"
       FRONTEND_URL: https://app.clenzy.fr
