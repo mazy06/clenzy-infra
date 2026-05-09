@@ -1,0 +1,200 @@
+# ===========================================
+# Clenzy - Liquibase Reset + Full Changelog Sync
+# ===========================================
+# Reinitialise databasechangelog en prod pour preparer la reactivation
+# de Liquibase + Hibernate ddl-auto=validate.
+#
+# Contexte historique (PRs clenzy-infra #37 -> #41) : trois tentatives de
+# reactivation ont echoue parce que Liquibase 4.29.2 RE-executait
+# 0060-nuki-integration au boot, meme apres reset des md5sums via raw SQL.
+# La cause hypothetique : etat hybride de databasechangelog (lignes ecrites
+# par changelog-sync-to-tag puis md5sums forces a NULL) qui declenche un
+# code path bizarre dans Liquibase.
+#
+# Approche "Option C" :
+#   1. Backup complet de databasechangelog dans une table horodatee.
+#   2. TRUNCATE databasechangelog.
+#   3. liquibase changelog-sync (sans tag) : reecrit TOUS les changesets
+#      du master changelog comme appliques, avec des checksums propres
+#      calcules par la version de Liquibase courante. Pas de SQL execute
+#      contre les tables metier.
+#   4. Diagnostic : count + dernieres entrees.
+#
+# Apres execution reussie, l'admin peut merger la PR clenzy-infra qui
+# retire `SPRING_LIQUIBASE_ENABLED=false` + `SPRING_JPA_HIBERNATE_DDL_AUTO=update`
+# du docker-compose.prod.yml. Le pms-server redemarre alors avec Liquibase
+# actif + Hibernate validate, et Liquibase trouvera 175+ rows dans
+# databasechangelog avec des checksums coherents -> aucun changeset
+# re-execute, aucune validation ddl en echec.
+#
+# ROLLBACK : si la table backup existe, restaurer avec :
+#   docker exec clenzy-postgres-prod psql -U $POSTGRES_USER -d $POSTGRES_DB -c \
+#     "TRUNCATE databasechangelog; \
+#      INSERT INTO databasechangelog SELECT * FROM databasechangelog_backup_<TIMESTAMP>;"
+#
+# Pre-requis : le repo applicatif (clenzy) doit etre a jour sur le VPS
+# (CD Deploy fait par PR main -> production sur clenzy applicatif).
+
+name: Liquibase Reset + Sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Tape EXACTLY 'RESET-AND-SYNC' pour confirmer (TRUNCATE databasechangelog en prod)"
+        required: true
+        type: string
+      liquibase_image:
+        description: 'Image Liquibase a utiliser'
+        required: true
+        default: 'liquibase/liquibase:4.29.2'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  reset_and_sync:
+    name: Reset databasechangelog + full changelog-sync
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Verify confirmation input
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "$CONFIRM" != "RESET-AND-SYNC" ]; then
+            echo "Confirmation invalide. Tape exactement 'RESET-AND-SYNC' pour confirmer."
+            exit 1
+          fi
+          echo "Confirmation OK."
+
+      - name: Run reset + changelog-sync on VPS
+        uses: appleboy/ssh-action@v1
+        env:
+          INFRA_DIR_VALUE: ${{ vars.VPS_INFRA_DIR }}
+          LIQUIBASE_IMAGE: ${{ inputs.liquibase_image }}
+        with:
+          host: ${{ secrets.VPS_HOST != '' && secrets.VPS_HOST || vars.VPS_HOST }}
+          username: ${{ secrets.VPS_USER != '' && secrets.VPS_USER || vars.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          envs: INFRA_DIR_VALUE,LIQUIBASE_IMAGE
+          command_timeout: 15m
+          script: |
+            set -e
+
+            INFRA_DIR="${INFRA_DIR_VALUE:-$HOME/clenzy-infra}"
+            CLENZY_DIR="$(cd "$INFRA_DIR/.." && pwd)/clenzy"
+            CHANGELOG_DIR="$CLENZY_DIR/server/src/main/resources/db/changelog"
+            DC="docker compose -f $INFRA_DIR/docker-compose.prod.yml --env-file $INFRA_DIR/.env"
+            BACKUP_TS="$(date -u +'%Y%m%d_%H%M%S')"
+            BACKUP_TABLE="databasechangelog_backup_${BACKUP_TS}"
+
+            echo "=========================================="
+            echo "Liquibase Reset + Full Changelog Sync"
+            echo "=========================================="
+            echo "INFRA_DIR    : $INFRA_DIR"
+            echo "CLENZY_DIR   : $CLENZY_DIR"
+            echo "CHANGELOG    : $CHANGELOG_DIR"
+            echo "IMAGE        : $LIQUIBASE_IMAGE"
+            echo "BACKUP_TABLE : $BACKUP_TABLE"
+            echo "=========================================="
+
+            if [ ! -f "$INFRA_DIR/.env" ]; then
+              echo "ERREUR : fichier .env manquant dans $INFRA_DIR"; exit 1
+            fi
+            if [ ! -f "$CHANGELOG_DIR/db.changelog-master.yaml" ]; then
+              echo "ERREUR : master changelog introuvable : $CHANGELOG_DIR/db.changelog-master.yaml"
+              echo "Declencher un CD Deploy sur clenzy avant relance."
+              exit 1
+            fi
+
+            set -a
+            . "$INFRA_DIR/.env"
+            set +a
+
+            if [ -z "$POSTGRES_USER" ] || [ -z "$POSTGRES_PASSWORD" ] || [ -z "$POSTGRES_DB" ]; then
+              echo "ERREUR : POSTGRES_USER/PASSWORD/DB manquant dans .env"; exit 1
+            fi
+
+            PG_STATE=$($DC ps --format '{{.State}}' postgres 2>/dev/null || echo "missing")
+            if [ "$PG_STATE" != "running" ]; then
+              echo "ERREUR : container postgres non running (state=$PG_STATE). Abandon."
+              exit 1
+            fi
+
+            JDBC_URL="jdbc:postgresql://postgres:5432/${POSTGRES_DB}?sslmode=prefer"
+
+            run_psql() {
+              $DC exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" "$@"
+            }
+
+            run_liquibase() {
+              docker run --rm \
+                --network clenzy-network \
+                -v "$CHANGELOG_DIR":/liquibase/changelog:ro \
+                -w /liquibase/changelog \
+                "$LIQUIBASE_IMAGE" \
+                --url="$JDBC_URL" \
+                --username="$POSTGRES_USER" \
+                --password="$POSTGRES_PASSWORD" \
+                --changelog-file=db.changelog-master.yaml \
+                --log-level=INFO \
+                "$@"
+            }
+
+            echo ""
+            echo "[1/5] Etat AVANT reset :"
+            ROW_COUNT_BEFORE=$(run_psql -tAc "SELECT count(*) FROM databasechangelog;" | tr -d '[:space:]')
+            echo "  databasechangelog rows (avant) : $ROW_COUNT_BEFORE"
+            run_psql -c "SELECT id, author, exectype FROM databasechangelog ORDER BY orderexecuted DESC LIMIT 5;"
+
+            echo ""
+            echo "[2/5] Backup databasechangelog -> $BACKUP_TABLE"
+            run_psql -c "CREATE TABLE ${BACKUP_TABLE} AS SELECT * FROM databasechangelog;"
+            BACKUP_COUNT=$(run_psql -tAc "SELECT count(*) FROM ${BACKUP_TABLE};" | tr -d '[:space:]')
+            echo "  Backup OK : $BACKUP_COUNT rows dans ${BACKUP_TABLE}"
+            if [ "$BACKUP_COUNT" != "$ROW_COUNT_BEFORE" ]; then
+              echo "ERREUR : backup count ($BACKUP_COUNT) != source count ($ROW_COUNT_BEFORE). Abandon."
+              exit 1
+            fi
+
+            echo ""
+            echo "[3/5] TRUNCATE databasechangelog"
+            run_psql -c "TRUNCATE TABLE databasechangelog;"
+            ROW_COUNT_AFTER_TRUNCATE=$(run_psql -tAc "SELECT count(*) FROM databasechangelog;" | tr -d '[:space:]')
+            if [ "$ROW_COUNT_AFTER_TRUNCATE" != "0" ]; then
+              echo "ERREUR : truncate echoue, rows restantes : $ROW_COUNT_AFTER_TRUNCATE"
+              exit 1
+            fi
+            echo "  databasechangelog vide (0 rows)"
+
+            echo ""
+            echo "[4/5] liquibase changelog-sync (sans tag, sync complet du master)"
+            run_liquibase changelog-sync
+
+            echo ""
+            echo "[5/5] Diagnostic apres sync :"
+            ROW_COUNT_AFTER_SYNC=$(run_psql -tAc "SELECT count(*) FROM databasechangelog;" | tr -d '[:space:]')
+            echo "  databasechangelog rows (apres sync) : $ROW_COUNT_AFTER_SYNC"
+            run_psql -c "SELECT id, author, exectype, dateexecuted FROM databasechangelog ORDER BY orderexecuted DESC LIMIT 10;"
+
+            if [ "$ROW_COUNT_AFTER_SYNC" -lt "$ROW_COUNT_BEFORE" ]; then
+              echo "WARNING : sync count ($ROW_COUNT_AFTER_SYNC) < count avant ($ROW_COUNT_BEFORE)."
+              echo "  Cela peut etre normal si des changesets pre-baseline (avant 0107a) ne sont pas dans le master changelog actuel."
+            fi
+
+            echo ""
+            echo "=========================================="
+            echo "Reset + sync termine."
+            echo "Backup conserve : $BACKUP_TABLE ($BACKUP_COUNT rows)"
+            echo ""
+            echo "Prochaines etapes :"
+            echo "  1. Verifier que ROW_COUNT_AFTER_SYNC ($ROW_COUNT_AFTER_SYNC) correspond aux changesets attendus dans le master changelog."
+            echo "  2. Merger la PR qui supprime SPRING_LIQUIBASE_ENABLED=false + SPRING_JPA_HIBERNATE_DDL_AUTO=update du docker-compose.prod.yml."
+            echo "  3. CD Deploy redemarre pms-server avec Liquibase actif + ddl-auto=validate."
+            echo ""
+            echo "Si pms-server crash-loop : merger immediatement un revert du docker-compose, puis investiguer."
+            echo "=========================================="
