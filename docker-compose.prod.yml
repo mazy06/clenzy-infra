@@ -343,23 +343,20 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
-      # Liquibase + Hibernate validate : reactives le 2026-05-09 (Option C)
-      # apres reset complet de databasechangelog via le workflow
-      # `Liquibase Reset + Sync` (clenzy-infra), qui a TRUNCATE puis
-      # re-execute `liquibase changelog-sync` pour reecrire toutes les
-      # rows avec des checksums propres. Cette approche resout le bug
-      # historique (PRs #37/#40/#41 reverties) ou Liquibase 4.29.2
-      # re-executait 0060-nuki-integration au boot a cause d'un etat
-      # hybride de databasechangelog (rows ecrites par changelog-sync-to-tag
-      # puis md5sums forces a NULL via raw SQL).
-      #
-      # Au prochain boot pms-server, Liquibase trouvera 116 rows dans
-      # databasechangelog avec des checksums coherents et n'executera
-      # aucun changeset. Hibernate validate verifiera que les entites
-      # JPA correspondent au schema (les colonnes legacy comme `url` sur
-      # property_photos ont ete dropped via 0114).
-      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
-      SPRING_LIQUIBASE_ENABLED: "true"
+      # ROLLBACK URGENT v3 (2026-05-09) : Option C aussi a echoue.
+      # Apres reset complet de databasechangelog + changelog-sync sur
+      # Liquibase 4.29.2 (image standalone), pms-server v3.2 a malgre tout
+      # tente de re-executer 0001-add-keycloak-id-to-users au boot,
+      # echouant sur "column already exists". Hypothese : Spring Boot 3.2
+      # embarque une version differente de Liquibase qui calcule des
+      # checksums incompatibles, donc trouve les 116 rows mais decide
+      # quand meme de re-jouer les changesets (probablement via un mode
+      # "missing" plutot que "checksum mismatch"). A investiguer plus tard
+      # avec un schema-comparison ou un clean room test.
+      # Retour a Hibernate update + Liquibase off le temps de trouver
+      # une solution stable.
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_LIQUIBASE_ENABLED: "false"
       FRONTEND_URL: https://app.clenzy.fr
       # Mapbox (carte dans les emails check-in)
       MAPBOX_ACCESS_TOKEN: ${MAPBOX_ACCESS_TOKEN:-}
