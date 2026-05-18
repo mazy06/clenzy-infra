@@ -321,25 +321,33 @@ services:
         aliases:
           - clenzy-server
 
-  # Frontend React (PMS)
+  # Frontend React (PMS) — Vite dev server avec HMR
+  # Le code source est monte en volume depuis ../clenzy/client : toute modif
+  # locale est detectee par Vite (polling chokidar) et la page se rafraichit
+  # automatiquement, sans rebuild du container.
   pms-client:
     build:
       context: ../clenzy/client
-      dockerfile: Dockerfile
-      args:
-        VITE_API_BASE_URL: http://localhost:8084
-        VITE_API_BASE_PATH: /api
-        VITE_KEYCLOAK_URL: http://localhost:8086
-        VITE_KEYCLOAK_REALM: clenzy
-        VITE_KEYCLOAK_CLIENT_ID: clenzy-web
-        VITE_APP_NAME: Clenzy
-        VITE_APP_VERSION: 1.0.0
-        VITE_STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY}
+      dockerfile: Dockerfile.dev
     container_name: clenzy-frontend-dev
     ports:
-      - "3000:80"
+      - "3000:3000"
     environment:
       - CHOKIDAR_USEPOLLING=true
+      - VITE_API_BASE_URL=http://localhost:8084
+      - VITE_API_BASE_PATH=/api
+      - VITE_KEYCLOAK_URL=http://localhost:8086
+      - VITE_KEYCLOAK_REALM=clenzy
+      - VITE_KEYCLOAK_CLIENT_ID=clenzy-web
+      - VITE_APP_NAME=Clenzy
+      - VITE_APP_VERSION=1.0.0
+      - VITE_STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}
+    volumes:
+      # Code source live-mounted depuis l'hote
+      - ../clenzy/client:/app
+      # Volume anonyme : preserve les node_modules du container (binaires Linux)
+      # et empeche les node_modules locaux (macOS) de les ecraser
+      - /app/node_modules
     networks:
       clenzy-network:
         aliases:
