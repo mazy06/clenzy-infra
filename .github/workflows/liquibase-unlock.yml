@@ -1,0 +1,153 @@
+# ===========================================
+# Clenzy - Liquibase Unlock (emergency tool)
+# ===========================================
+# Outil de secours Phase 5 du plan de reactivation
+# SPRING_LIQUIBASE_ENABLED=true.
+#
+# Scenario d'incident type :
+#   1. Spring Boot demarre, Liquibase prend le lock sur databasechangeloglock
+#   2. Pod tue (OOMKiller, kill -9, deploy timeout, etc.) AVANT que Liquibase
+#      libere le lock
+#   3. Au prochain boot, Liquibase voit le lock -> attend... timeout -> l'app
+#      ne demarre pas -> restart-loop infini
+#
+# Ce workflow libere manuellement le lock pour sortir de la restart-loop :
+#   UPDATE databasechangeloglock SET locked = false, lockgranted = null,
+#         lockedby = null WHERE id = 1;
+#
+# Pre-flight (verifications avant unlock) :
+#   - container postgres up
+#   - row id=1 existe dans databasechangeloglock
+#   - lock effectivement detenu (sinon = no-op, warning)
+#   - lock detenu depuis plus que le seuil (5 min par defaut) -- sinon
+#     potentiellement un Liquibase legitime tourne ; bypass via FORCE=true
+#
+# Post-action :
+#   - pms-server reprend tout seul au prochain boot (restart automatique
+#     ou manuel via PMS Server Diag).
+#
+# Securite : aucun input github.event.* utilise dans les `run:`.
+# Seuls les users avec write access peuvent declencher workflow_dispatch.
+
+name: Liquibase Unlock
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry-run (juste afficher etat, ne pas unlock)'
+        required: true
+        default: true
+        type: boolean
+      force:
+        description: 'Forcer unlock meme si lock recent (< 5 min)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  unlock:
+    name: Inspect and release Liquibase lock
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Run unlock procedure on VPS
+        uses: appleboy/ssh-action@v1
+        env:
+          INFRA_DIR_VALUE: ${{ vars.VPS_INFRA_DIR }}
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+          FORCE: ${{ inputs.force && 'true' || 'false' }}
+        with:
+          host: ${{ secrets.VPS_HOST != '' && secrets.VPS_HOST || vars.VPS_HOST }}
+          username: ${{ secrets.VPS_USER != '' && secrets.VPS_USER || vars.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          envs: INFRA_DIR_VALUE,DRY_RUN,FORCE
+          command_timeout: 3m
+          script: |
+            set -e
+
+            INFRA_DIR="${INFRA_DIR_VALUE:-$HOME/clenzy-infra}"
+            DC="docker compose -f $INFRA_DIR/docker-compose.prod.yml --env-file $INFRA_DIR/.env"
+            STALE_THRESHOLD_SECONDS=300
+
+            echo "=========================================="
+            echo "Liquibase Unlock"
+            echo "=========================================="
+            echo "DRY_RUN  : $DRY_RUN"
+            echo "FORCE    : $FORCE"
+            echo "THRESHOLD: ${STALE_THRESHOLD_SECONDS}s"
+
+            set -a
+            . "$INFRA_DIR/.env"
+            set +a
+
+            if [ -z "$POSTGRES_USER" ] || [ -z "$POSTGRES_DB" ]; then
+              echo "::error::POSTGRES_USER/DB manquant dans .env"
+              exit 1
+            fi
+
+            PG_STATE=$($DC ps --format '{{.State}}' postgres 2>/dev/null || echo "missing")
+            if [ "$PG_STATE" != "running" ]; then
+              echo "::error::Container postgres non running (state=$PG_STATE)"
+              exit 1
+            fi
+
+            run_psql() { $DC exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" "$@"; }
+
+            echo ""
+            echo "[1/3] Etat actuel de databasechangeloglock"
+            run_psql -c "SELECT id, locked, lockgranted, lockedby FROM databasechangeloglock WHERE id=1;"
+
+            LOCK_STATE=$(run_psql -tAc "SELECT locked FROM databasechangeloglock WHERE id=1;" 2>/dev/null \
+              | tr -d '[:space:]' || echo "missing")
+            LOCK_AGE=$(run_psql -tAc "SELECT EXTRACT(EPOCH FROM (NOW() - lockgranted))::INT FROM databasechangeloglock WHERE id=1;" 2>/dev/null \
+              | tr -d '[:space:]' || echo "")
+
+            if [ "$LOCK_STATE" = "missing" ]; then
+              echo "::error::databasechangeloglock row id=1 introuvable"
+              exit 1
+            fi
+
+            echo ""
+            echo "[2/3] Decision"
+
+            if [ "$LOCK_STATE" != "t" ] && [ "$LOCK_STATE" != "true" ]; then
+              echo "::warning::Lock deja libere (locked=$LOCK_STATE). Rien a faire."
+              echo "OK - Aucun unlock necessaire."
+              exit 0
+            fi
+
+            echo "Lock detenu depuis ${LOCK_AGE:-?}s."
+
+            if [ -n "$LOCK_AGE" ] && [ "$LOCK_AGE" -lt "$STALE_THRESHOLD_SECONDS" ] && [ "$FORCE" != "true" ]; then
+              echo "::error::Le lock est detenu depuis moins de ${STALE_THRESHOLD_SECONDS}s."
+              echo "::error::Il est probablement legitime (Liquibase actif). Verifier d'abord :"
+              echo "::error::  1. pms-server est-il en cours de redemarrage ?"
+              echo "::error::  2. Le workflow Liquibase Bootstrap tourne-t-il ?"
+              echo "::error::Si certain qu'il s'agit d'un lock orphelin, relancer avec FORCE=true."
+              exit 1
+            fi
+
+            if [ "$DRY_RUN" = "true" ]; then
+              echo ""
+              echo "[3/3] DRY-RUN : Pas d'unlock effectue."
+              echo "Pour debloquer, relancer le workflow avec dry_run=false."
+              exit 0
+            fi
+
+            echo ""
+            echo "[3/3] Liberation du lock"
+            run_psql -c "UPDATE databasechangeloglock SET locked=false, lockgranted=NULL, lockedby=NULL WHERE id=1;"
+
+            echo ""
+            echo "Verification post-unlock :"
+            run_psql -c "SELECT id, locked, lockgranted, lockedby FROM databasechangeloglock WHERE id=1;"
+
+            echo ""
+            echo "OK - Lock libere. Le prochain boot Liquibase reprendra normalement."
+            echo "Si pms-server est en restart-loop, il devrait booter au prochain restart."
