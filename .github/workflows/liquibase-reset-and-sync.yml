@@ -87,7 +87,8 @@ jobs:
 
             INFRA_DIR="${INFRA_DIR_VALUE:-$HOME/clenzy-infra}"
             CLENZY_DIR="$(cd "$INFRA_DIR/.." && pwd)/clenzy"
-            CHANGELOG_DIR="$CLENZY_DIR/server/src/main/resources/db/changelog"
+            RESOURCES_DIR="$CLENZY_DIR/server/src/main/resources"
+            CHANGELOG_DIR="$RESOURCES_DIR/db/changelog"
             DC="docker compose -f $INFRA_DIR/docker-compose.prod.yml --env-file $INFRA_DIR/.env"
             BACKUP_TS="$(date -u +'%Y%m%d_%H%M%S')"
             BACKUP_TABLE="databasechangelog_backup_${BACKUP_TS}"
@@ -131,16 +132,17 @@ jobs:
               $DC exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" "$@"
             }
 
+            # Phase 5b-bis (2026-05-21) : path long pour matcher Spring Boot
             run_liquibase() {
               docker run --rm \
                 --network clenzy-network \
-                -v "$CHANGELOG_DIR":/liquibase/changelog:ro \
-                -w /liquibase/changelog \
+                -v "$RESOURCES_DIR":/liquibase/resources:ro \
+                -w /liquibase/resources \
                 "$LIQUIBASE_IMAGE" \
                 --url="$JDBC_URL" \
                 --username="$POSTGRES_USER" \
                 --password="$POSTGRES_PASSWORD" \
-                --changelog-file=db.changelog-master.yaml \
+                --changelog-file=db/changelog/db.changelog-master.yaml \
                 --log-level=INFO \
                 "$@"
             }
