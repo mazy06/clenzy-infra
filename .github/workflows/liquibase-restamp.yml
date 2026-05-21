@@ -1,0 +1,172 @@
+# ===========================================
+# Clenzy - Liquibase Restamp (filename migration)
+# ===========================================
+# Phase 5b-bis du plan de reactivation SPRING_LIQUIBASE_ENABLED=true.
+#
+# Probleme : la table databasechangelog en prod contient les 118 rows avec
+# filename='db.changelog-master.yaml' (path court stocke par Liquibase
+# Bootstrap : -w /liquibase/changelog + --changelog-file=db.changelog-master.yaml).
+# Mais Spring Boot embedded Liquibase utilise
+# change-log=classpath:db/changelog/db.changelog-master.yaml et stocke
+# filename='db/changelog/db.changelog-master.yaml' (path long).
+#
+# Au boot avec SPRING_LIQUIBASE_ENABLED=true : Liquibase matche
+# (id, author, filename). Filename different => 0 match => tous les
+# changesets "Previously run: 0" => tentative de re-execution depuis 0001
+# => "column already exists" => crash-loop.
+# (Incident 2026-05-21 22:10 UTC, rollback PR clenzy-infra #56.)
+#
+# Ce workflow re-stamps les rows en alignant le filename sur le path long
+# attendu par Spring Boot, via une simple UPDATE SQL.
+#
+# Note importante : en Liquibase 4.x, le checksum md5 est calcule sur le
+# CONTENU du changeset (les sqlFile inclus), pas sur le filename. Donc une
+# UPDATE filename est SAFE : le checksum reste valide.
+#
+# Garde-fous :
+#   - dry_run=true par defaut
+#   - WHERE clause stricte sur le filename source
+#   - Transaction (rollback si erreur)
+#   - Detection des collisions de (id, author)
+#   - Verification post-update avec re-affichage
+#   - Idempotent : re-run sur table deja migree => 0 rows updated
+#
+# Securite : inputs passes via env: avant usage, pas d'interpolation
+# directe dans run:. workflow_dispatch only.
+
+name: Liquibase Restamp
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry-run (montre etat et UPDATE prevu, ne modifie rien)'
+        required: true
+        default: true
+        type: boolean
+      source_filename:
+        description: 'Filename source (path court actuel)'
+        required: true
+        default: 'db.changelog-master.yaml'
+        type: string
+      target_filename:
+        description: 'Filename cible (path long attendu par Spring Boot)'
+        required: true
+        default: 'db/changelog/db.changelog-master.yaml'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  restamp:
+    name: Migrate databasechangelog filename
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Run restamp procedure on VPS
+        uses: appleboy/ssh-action@v1
+        env:
+          INFRA_DIR_VALUE: ${{ vars.VPS_INFRA_DIR }}
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+          SOURCE_FN: ${{ inputs.source_filename }}
+          TARGET_FN: ${{ inputs.target_filename }}
+        with:
+          host: ${{ secrets.VPS_HOST != '' && secrets.VPS_HOST || vars.VPS_HOST }}
+          username: ${{ secrets.VPS_USER != '' && secrets.VPS_USER || vars.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          envs: INFRA_DIR_VALUE,DRY_RUN,SOURCE_FN,TARGET_FN
+          command_timeout: 3m
+          script: |
+            set -e
+
+            INFRA_DIR="${INFRA_DIR_VALUE:-$HOME/clenzy-infra}"
+            DC="docker compose -f $INFRA_DIR/docker-compose.prod.yml --env-file $INFRA_DIR/.env"
+
+            echo "=========================================="
+            echo "Liquibase Restamp"
+            echo "=========================================="
+            echo "DRY_RUN  : $DRY_RUN"
+            echo "SOURCE   : $SOURCE_FN"
+            echo "TARGET   : $TARGET_FN"
+
+            set -a
+            . "$INFRA_DIR/.env"
+            set +a
+
+            if [ -z "$POSTGRES_USER" ] || [ -z "$POSTGRES_DB" ]; then
+              echo "::error::POSTGRES_USER/DB manquant dans .env"
+              exit 1
+            fi
+
+            PG_STATE=$($DC ps --format '{{.State}}' postgres 2>/dev/null || echo "missing")
+            if [ "$PG_STATE" != "running" ]; then
+              echo "::error::Container postgres non running (state=$PG_STATE)"
+              exit 1
+            fi
+
+            run_psql() { $DC exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" "$@"; }
+
+            echo ""
+            echo "[1/4] Distribution actuelle des filenames"
+            run_psql -c "SELECT filename, COUNT(*) AS rows FROM databasechangelog GROUP BY filename ORDER BY filename;"
+
+            echo ""
+            echo "[2/4] Rows qui seraient affectees par le UPDATE"
+            AFFECTED=$(run_psql -v src="$SOURCE_FN" -tAc "SELECT COUNT(*) FROM databasechangelog WHERE filename = :'src';" 2>/dev/null | tr -d '[:space:]' || echo "0")
+            echo "Rows avec filename=$SOURCE_FN : $AFFECTED"
+
+            if [ "$AFFECTED" = "0" ]; then
+              echo "::warning::Aucune row a re-stamper (source filename absent ou deja migre)."
+              echo "OK - Pas d'action necessaire."
+              echo ""
+              echo "Sample de 5 rows (verification etat actuel) :"
+              run_psql -c "SELECT id, filename, dateexecuted FROM databasechangelog ORDER BY orderexecuted DESC LIMIT 5;"
+              exit 0
+            fi
+
+            # Detection collisions : meme (id, author) existant deja en target
+            COLLISIONS=$(run_psql -v src="$SOURCE_FN" -v tgt="$TARGET_FN" -tAc "SELECT COUNT(*) FROM databasechangelog d1 WHERE d1.filename = :'src' AND EXISTS (SELECT 1 FROM databasechangelog d2 WHERE d2.filename = :'tgt' AND d2.id = d1.id AND d2.author = d1.author);" 2>/dev/null | tr -d '[:space:]' || echo "0")
+
+            if [ "$COLLISIONS" != "0" ]; then
+              echo "::error::$COLLISIONS collision(s) detectees : (id, author) deja present en target filename."
+              echo "::error::Aborting pour eviter de violer une contrainte d'unicite."
+              exit 1
+            fi
+
+            echo ""
+            echo "[3/4] Verification du UPDATE prevu"
+            echo "  UPDATE databasechangelog"
+            echo "  SET filename = $TARGET_FN"
+            echo "  WHERE filename = $SOURCE_FN;"
+            echo ""
+            echo "Note : checksum md5 reste valide (calcule sur le contenu, pas le filename)."
+
+            if [ "$DRY_RUN" = "true" ]; then
+              echo ""
+              echo "[4/4] DRY-RUN : aucune modification effectuee."
+              echo "Pour appliquer, relancer le workflow avec dry_run=false."
+              exit 0
+            fi
+
+            echo ""
+            echo "[4/4] Execution du UPDATE (transaction)"
+            run_psql -v src="$SOURCE_FN" -v tgt="$TARGET_FN" -c "BEGIN; UPDATE databasechangelog SET filename = :'tgt' WHERE filename = :'src'; COMMIT;"
+
+            echo ""
+            echo "Verification post-update :"
+            run_psql -c "SELECT filename, COUNT(*) AS rows FROM databasechangelog GROUP BY filename ORDER BY filename;"
+
+            echo ""
+            echo "Sample de 5 rows :"
+            run_psql -c "SELECT id, filename, dateexecuted FROM databasechangelog ORDER BY orderexecuted DESC LIMIT 5;"
+
+            echo ""
+            echo "OK - Re-stamping termine. $AFFECTED row(s) migrees."
+            echo ""
+            echo "Prochaines etapes :"
+            echo "  1. Trigger 'DB Status' (cron-job manuel) pour confirmer status up to date"
+            echo "  2. Ouvrir une nouvelle PR pour repasser SPRING_LIQUIBASE_ENABLED=true"
+            echo "  3. Merge au creneau choisi"
