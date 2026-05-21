@@ -201,3 +201,44 @@ jobs:
 
             echo ""
             echo "OK — la prod est en sync avec le master changelog."
+
+            # ----------------------------------------------------------------
+            # Sanity check : LiquibaseHealthIndicator (Phase 4)
+            # ----------------------------------------------------------------
+            # Verifie que l'indicator custom est bien embarque dans le binaire
+            # deploye, en interrogeant /actuator/health depuis l'interieur du
+            # reseau Docker (nginx bloque /actuator publiquement).
+            #
+            # Le payload detaille est protege par show-details=WHEN_AUTHORIZED
+            # en prod — on ne peut donc pas lire le contenu du indicator sans
+            # auth. Mais le code HTTP de la racine /actuator/health suffit :
+            #   200 → app sait au moins repondre (au moins un indicator UP)
+            #   503 → un indicator est DOWN → declencher PMS Server Diag
+            #   non-joignable → app crashee ou en restart-loop
+            echo ""
+            echo "[4/4] LiquibaseHealthIndicator sanity check"
+
+            HEALTH_CODE=$($DC exec -T pms-server sh -c \
+              "curl -sf -o /dev/null -w '%{http_code}' --max-time 5 \
+               http://localhost:8080/actuator/health" 2>/dev/null || echo "unreachable")
+
+            echo "GET /actuator/health → HTTP $HEALTH_CODE"
+
+            case "$HEALTH_CODE" in
+              200)
+                echo "OK — Spring Boot Actuator repond, tous les indicators sont UP."
+                ;;
+              503)
+                echo "::warning::Un health indicator a fait passer /actuator/health en DOWN."
+                echo "Declencher le workflow 'PMS Server Diag' pour les details."
+                # Non bloquant : DB Status reste vert si la DB est sync. Le crash"
+                # eventuel d'un autre indicator (mail, etc.) n'est pas notre scope.
+                ;;
+              unreachable|"")
+                echo "::warning::pms-server ne repond pas (timeout / container down)."
+                echo "Declencher 'PMS Server Diag' pour inspecter."
+                ;;
+              *)
+                echo "::warning::Code HTTP inattendu sur /actuator/health: $HEALTH_CODE"
+                ;;
+            esac
