@@ -115,7 +115,7 @@ jobs:
 
             echo ""
             echo "[2/4] Rows qui seraient affectees par le UPDATE"
-            AFFECTED=$(run_psql -v src="$SOURCE_FN" -tAc "SELECT COUNT(*) FROM databasechangelog WHERE filename = :'src';" 2>/dev/null | tr -d '[:space:]' || echo "0")
+            AFFECTED=$(run_psql -tAc "SELECT COUNT(*) FROM databasechangelog WHERE filename = '$SOURCE_FN';" 2>/dev/null | tr -d '[:space:]' || echo "0")
             echo "Rows avec filename=$SOURCE_FN : $AFFECTED"
 
             if [ "$AFFECTED" = "0" ]; then
@@ -128,7 +128,7 @@ jobs:
             fi
 
             # Detection collisions : meme (id, author) existant deja en target
-            COLLISIONS=$(run_psql -v src="$SOURCE_FN" -v tgt="$TARGET_FN" -tAc "SELECT COUNT(*) FROM databasechangelog d1 WHERE d1.filename = :'src' AND EXISTS (SELECT 1 FROM databasechangelog d2 WHERE d2.filename = :'tgt' AND d2.id = d1.id AND d2.author = d1.author);" 2>/dev/null | tr -d '[:space:]' || echo "0")
+            COLLISIONS=$(run_psql -tAc "SELECT COUNT(*) FROM databasechangelog d1 WHERE d1.filename = '$SOURCE_FN' AND EXISTS (SELECT 1 FROM databasechangelog d2 WHERE d2.filename = '$TARGET_FN' AND d2.id = d1.id AND d2.author = d1.author);" 2>/dev/null | tr -d '[:space:]' || echo "0")
 
             if [ "$COLLISIONS" != "0" ]; then
               echo "::error::$COLLISIONS collision(s) detectees : (id, author) deja present en target filename."
@@ -153,7 +153,7 @@ jobs:
 
             echo ""
             echo "[4/4] Execution du UPDATE (transaction)"
-            run_psql -v src="$SOURCE_FN" -v tgt="$TARGET_FN" -c "BEGIN; UPDATE databasechangelog SET filename = :'tgt' WHERE filename = :'src'; COMMIT;"
+            run_psql -c "BEGIN; UPDATE databasechangelog SET filename = '$TARGET_FN' WHERE filename = '$SOURCE_FN'; COMMIT;"
 
             echo ""
             echo "Verification post-update :"
