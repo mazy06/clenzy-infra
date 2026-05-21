@@ -1,0 +1,203 @@
+# ===========================================
+# Clenzy - DB Status (Liquibase read-only)
+# ===========================================
+# Phase 1 du plan de reactivation de SPRING_LIQUIBASE_ENABLED=true en prod.
+#
+# Objectif : visibilite continue sur l'etat de synchronisation entre
+# `databasechangelog` (prod) et le master changelog du repo applicatif, SANS
+# rien modifier. Sert de prerequis aux phases suivantes (audit baseline, check
+# CI, activation boot Liquibase).
+#
+# Ce workflow :
+#   1. Lance un container Liquibase 4.29.2 en read-only sur le reseau prod.
+#   2. Execute `status --verbose` (changesets non appliques) et `validate`
+#      (checksums divergents, syntaxe).
+#   3. Dump les 10 derniers changesets traces + total count.
+#   4. FAIL si :
+#        - des changesets sont pending
+#        - liquibase validate signale un mismatch / une erreur
+#
+# Trigger :
+#   - workflow_dispatch (manuel)
+#   - cron quotidien 06:00 UTC -> mail GitHub Actions a l'owner si fail
+#
+# IMPORTANT : aucune ecriture (pas de `update`, pas de `changelog-sync`,
+# pas de DML). Si une desync est detectee, appliquer via le workflow
+# `Liquibase Bootstrap` apres revue.
+#
+# Securite : les inputs workflow_dispatch ne sont declenchables que par les
+# users avec write access. Aucune entree provenant de github.event.* (issue,
+# pr, commit message) n'est utilisee dans un `run:`.
+
+name: DB Status
+
+on:
+  workflow_dispatch:
+    inputs:
+      verbose:
+        description: 'Affiche aussi les 10 derniers changesets traces'
+        required: false
+        default: true
+        type: boolean
+      liquibase_image:
+        description: 'Image Liquibase a utiliser'
+        required: false
+        default: 'liquibase/liquibase:4.29.2'
+        type: string
+  schedule:
+    - cron: '0 6 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  status:
+    name: Read-only Liquibase status
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Run Liquibase status + validate on VPS
+        uses: appleboy/ssh-action@v1
+        env:
+          INFRA_DIR_VALUE: ${{ vars.VPS_INFRA_DIR }}
+          LIQUIBASE_IMAGE: ${{ inputs.liquibase_image || 'liquibase/liquibase:4.29.2' }}
+          VERBOSE_DUMP: ${{ inputs.verbose && 'true' || 'false' }}
+        with:
+          host: ${{ secrets.VPS_HOST != '' && secrets.VPS_HOST || vars.VPS_HOST }}
+          username: ${{ secrets.VPS_USER != '' && secrets.VPS_USER || vars.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          envs: INFRA_DIR_VALUE,LIQUIBASE_IMAGE,VERBOSE_DUMP
+          command_timeout: 5m
+          script: |
+            set -e
+
+            INFRA_DIR="${INFRA_DIR_VALUE:-$HOME/clenzy-infra}"
+            CLENZY_DIR="$(cd "$INFRA_DIR/.." && pwd)/clenzy"
+            CHANGELOG_DIR="$CLENZY_DIR/server/src/main/resources/db/changelog"
+            DC="docker compose -f $INFRA_DIR/docker-compose.prod.yml --env-file $INFRA_DIR/.env"
+
+            echo "=========================================="
+            echo "DB Status (read-only)"
+            echo "=========================================="
+            echo "INFRA_DIR    : $INFRA_DIR"
+            echo "CLENZY_DIR   : $CLENZY_DIR"
+            echo "CHANGELOG    : $CHANGELOG_DIR"
+            echo "IMAGE        : $LIQUIBASE_IMAGE"
+            echo "VERBOSE_DUMP : $VERBOSE_DUMP"
+
+            if [ ! -f "$INFRA_DIR/.env" ]; then
+              echo "::error::Fichier .env manquant dans $INFRA_DIR"
+              exit 1
+            fi
+            if [ ! -f "$CHANGELOG_DIR/db.changelog-master.yaml" ]; then
+              echo "::error::Master changelog introuvable : $CHANGELOG_DIR/db.changelog-master.yaml"
+              echo "Declencher un CD Deploy pour resynchroniser le repo clenzy avant de relancer."
+              exit 1
+            fi
+
+            set -a
+            . "$INFRA_DIR/.env"
+            set +a
+
+            if [ -z "$POSTGRES_USER" ] || [ -z "$POSTGRES_PASSWORD" ] || [ -z "$POSTGRES_DB" ]; then
+              echo "::error::POSTGRES_USER/PASSWORD/DB manquant dans .env"
+              exit 1
+            fi
+
+            PG_STATE=$($DC ps --format '{{.State}}' postgres 2>/dev/null || echo "missing")
+            if [ "$PG_STATE" != "running" ]; then
+              echo "::error::Container postgres non running (state=$PG_STATE)"
+              exit 1
+            fi
+
+            JDBC_URL="jdbc:postgresql://postgres:5432/${POSTGRES_DB}?sslmode=prefer"
+
+            # cwd sur /liquibase/changelog pour que `relativeToChangelogFile: true`
+            # resolve les sqlFile correctement (identique au workflow Bootstrap).
+            run_liquibase() {
+              docker run --rm \
+                --network clenzy-network \
+                -v "$CHANGELOG_DIR":/liquibase/changelog:ro \
+                -w /liquibase/changelog \
+                "$LIQUIBASE_IMAGE" \
+                --url="$JDBC_URL" \
+                --username="$POSTGRES_USER" \
+                --password="$POSTGRES_PASSWORD" \
+                --changelog-file=db.changelog-master.yaml \
+                --log-level=INFO \
+                "$@"
+            }
+
+            STATUS_OUT="/tmp/db-status-$$.log"
+            VALIDATE_OUT="/tmp/db-validate-$$.log"
+            trap 'rm -f "$STATUS_OUT" "$VALIDATE_OUT"' EXIT
+
+            STATUS_RC=0
+            VALIDATE_RC=0
+
+            echo ""
+            echo "[1/3] liquibase status --verbose"
+            run_liquibase status --verbose 2>&1 | tee "$STATUS_OUT" || STATUS_RC=$?
+
+            echo ""
+            echo "[2/3] liquibase validate"
+            run_liquibase validate 2>&1 | tee "$VALIDATE_OUT" || VALIDATE_RC=$?
+
+            echo ""
+            echo "[3/3] databasechangelog metrics"
+            TOTAL=$($DC exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
+              "SELECT count(*) FROM databasechangelog;" 2>/dev/null | tr -d '[:space:]' || echo "?")
+            LAST_DATE=$($DC exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
+              "SELECT max(dateexecuted) FROM databasechangelog;" 2>/dev/null | tr -d '[:space:]' || echo "?")
+            LOCK_STATE=$($DC exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
+              "SELECT locked FROM databasechangeloglock WHERE id=1;" 2>/dev/null | tr -d '[:space:]' || echo "?")
+
+            echo "Total tracked changesets : $TOTAL"
+            echo "Last exec date           : $LAST_DATE"
+            echo "Changelog lock state     : $LOCK_STATE"
+
+            if [ "$VERBOSE_DUMP" = "true" ]; then
+              echo ""
+              echo "Last 10 tracked changesets :"
+              $DC exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+                -c "SELECT id, author, exectype, dateexecuted, tag FROM databasechangelog ORDER BY orderexecuted DESC LIMIT 10;" \
+                2>&1 || true
+            fi
+
+            # Parse pending count from `status` output (line "X change sets have not been applied")
+            PENDING=$(grep -oE '^[0-9]+ change set' "$STATUS_OUT" | grep -oE '^[0-9]+' | head -1 || true)
+            PENDING=${PENDING:-0}
+
+            echo ""
+            echo "=========================================="
+            echo "Summary"
+            echo "=========================================="
+            echo "Pending changesets : $PENDING"
+            echo "Status RC          : $STATUS_RC"
+            echo "Validate RC        : $VALIDATE_RC"
+            echo "Lock state         : $LOCK_STATE"
+
+            FAIL=0
+            if [ "$PENDING" != "0" ]; then
+              echo "::warning::$PENDING changeset(s) en attente d'application en prod."
+              FAIL=1
+            fi
+            if [ "$VALIDATE_RC" != "0" ]; then
+              echo "::error::liquibase validate a echoue (RC=$VALIDATE_RC) — checksum mismatch ou syntaxe invalide probable."
+              FAIL=1
+            fi
+            if [ "$LOCK_STATE" = "t" ] || [ "$LOCK_STATE" = "true" ]; then
+              echo "::warning::databasechangeloglock est verrouille — un Liquibase tourne ou un lock orphelin subsiste."
+            fi
+
+            if [ "$FAIL" != "0" ]; then
+              echo ""
+              echo "Action requise : revoir les ecarts ci-dessus, puis appliquer via"
+              echo "le workflow 'Liquibase Bootstrap' (avec sync_tag adapte) si necessaire."
+              exit 1
+            fi
+
+            echo ""
+            echo "OK — la prod est en sync avec le master changelog."
