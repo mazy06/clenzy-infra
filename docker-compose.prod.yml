@@ -356,8 +356,16 @@ services:
       # DDL_AUTO reste a 'update' pour cette premiere bascule (transition
       # douce, on ne change qu'une variable a la fois). Passage a 'validate'
       # envisage en Phase 5b-tail apres 1 semaine d'observation stable.
+      # HOTFIX 2026-05-21 22:25 : rollback Phase 5b apres restart-loop pms-server.
+      # Liquibase 4.29.2 + databasechangelog 118 rows mais Spring Boot voit
+      # "Previously run: 0" et tente d'executer 0001 -> column already exists.
+      # Cause : mismatch de filename entre databasechangelog (path court
+      # "db.changelog-master.yaml" stocke par Liquibase Bootstrap) et Spring
+      # Boot (path long "db/changelog/db.changelog-master.yaml"). Identique
+      # symptome a Option C mai 2026, racine differente. Investigation +
+      # Phase 5b-bis a venir.
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
-      SPRING_LIQUIBASE_ENABLED: "true"
+      SPRING_LIQUIBASE_ENABLED: "false"
       FRONTEND_URL: https://app.clenzy.fr
       # Mapbox (carte dans les emails check-in)
       MAPBOX_ACCESS_TOKEN: ${MAPBOX_ACCESS_TOKEN:-}
