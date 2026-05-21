@@ -343,20 +343,21 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
-      # ROLLBACK URGENT v3 (2026-05-09) : Option C aussi a echoue.
-      # Apres reset complet de databasechangelog + changelog-sync sur
-      # Liquibase 4.29.2 (image standalone), pms-server v3.2 a malgre tout
-      # tente de re-executer 0001-add-keycloak-id-to-users au boot,
-      # echouant sur "column already exists". Hypothese : Spring Boot 3.2
-      # embarque une version differente de Liquibase qui calcule des
-      # checksums incompatibles, donc trouve les 116 rows mais decide
-      # quand meme de re-jouer les changesets (probablement via un mode
-      # "missing" plutot que "checksum mismatch"). A investiguer plus tard
-      # avec un schema-comparison ou un clean room test.
-      # Retour a Hibernate update + Liquibase off le temps de trouver
-      # une solution stable.
+      # Liquibase reactive (Phase 5b, 2026-05-21) apres :
+      #   - Plan en 5 phases sur clenzy + clenzy-infra (DB Status quotidien,
+      #     ruleset Protect production avec immutable-changesets +
+      #     validate-structure required, LiquibaseHealthIndicator runtime,
+      #     workflow Liquibase Unlock pour les locks orphelins).
+      #   - Alignement liquibase-core a 4.29.2 dans Spring Boot (clenzy PR
+      #     #137) — la version embarquee correspond maintenant exactement a
+      #     celle utilisee pour calculer les checksums actuels en prod, ce
+      #     qui empeche la replay des changesets pre-baseline (cause de
+      #     l'incident 0111 / Option C en mai 2026).
+      # DDL_AUTO reste a 'update' pour cette premiere bascule (transition
+      # douce, on ne change qu'une variable a la fois). Passage a 'validate'
+      # envisage en Phase 5b-tail apres 1 semaine d'observation stable.
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
-      SPRING_LIQUIBASE_ENABLED: "false"
+      SPRING_LIQUIBASE_ENABLED: "true"
       FRONTEND_URL: https://app.clenzy.fr
       # Mapbox (carte dans les emails check-in)
       MAPBOX_ACCESS_TOKEN: ${MAPBOX_ACCESS_TOKEN:-}
