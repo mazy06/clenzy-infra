@@ -356,16 +356,15 @@ services:
       # DDL_AUTO reste a 'update' pour cette premiere bascule (transition
       # douce, on ne change qu'une variable a la fois). Passage a 'validate'
       # envisage en Phase 5b-tail apres 1 semaine d'observation stable.
-      # Phase 5b-bis (2026-05-21 22:55 UTC) : re-activation apres restamp
-      # de databasechangelog. La table contient maintenant 118 rows avec
-      # filename = "db/changelog/db.changelog-master.yaml" (path long),
-      # aligne avec ce que Spring Boot calcule via
-      # change-log=classpath:db/changelog/db.changelog-master.yaml.
-      # Les workflows infra (DB Status, Bootstrap, Reset+Sync) ont
-      # egalement ete alignes sur ce path long via PR #59.
-      # Verification finale DB Status (20:53 UTC) : up to date,
-      # no validation errors, Pending 0, /actuator/health HTTP 200.
-      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      # Phase 5b-tail (2026-05-21 23:05 UTC) : ddl-auto passe de 'update' a
+      # 'validate'. Liquibase est desormais l'unique source de verite pour
+      # le schema (PR clenzy-infra #60, Phase 5b-bis active). Hibernate
+      # n'ajustera plus le schema au boot, il verifiera juste que le
+      # schema matche les entites JPA. Toute divergence future fera
+      # planter le boot (desirable : on saura immediatement qu'un changeset
+      # Liquibase manque pour une nouvelle entite, plutot qu'avoir des
+      # modifications schema silencieuses au runtime).
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
       SPRING_LIQUIBASE_ENABLED: "true"
       FRONTEND_URL: https://app.clenzy.fr
       # Mapbox (carte dans les emails check-in)
