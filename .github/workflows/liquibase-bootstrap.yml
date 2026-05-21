@@ -72,7 +72,8 @@ jobs:
 
             INFRA_DIR="${INFRA_DIR_VALUE:-$HOME/clenzy-infra}"
             CLENZY_DIR="$(cd "$INFRA_DIR/.." && pwd)/clenzy"
-            CHANGELOG_DIR="$CLENZY_DIR/server/src/main/resources/db/changelog"
+            RESOURCES_DIR="$CLENZY_DIR/server/src/main/resources"
+            CHANGELOG_DIR="$RESOURCES_DIR/db/changelog"
             DC="docker compose -f $INFRA_DIR/docker-compose.prod.yml --env-file $INFRA_DIR/.env"
 
             echo "=========================================="
@@ -114,19 +115,21 @@ jobs:
 
             JDBC_URL="jdbc:postgresql://postgres:5432/${POSTGRES_DB}?sslmode=prefer"
 
-            # WORKDIR par defaut de l'image liquibase est /liquibase, pas
-            # /liquibase/changelog. On force `-w` + chemin relatif pour que
-            # `relativeToChangelogFile: true` resolve correctement les sqlFile.
+            # Phase 5b-bis (2026-05-21) : aligne sur path long
+            # "db/changelog/db.changelog-master.yaml" pour matcher Spring Boot
+            # classpath:db/changelog/... — sans cet alignement, Spring Boot
+            # ne matche pas les rows ecrites par ce workflow et tente de
+            # re-executer les changesets baseline (incident PR #55).
             run_liquibase() {
               docker run --rm \
                 --network clenzy-network \
-                -v "$CHANGELOG_DIR":/liquibase/changelog:ro \
-                -w /liquibase/changelog \
+                -v "$RESOURCES_DIR":/liquibase/resources:ro \
+                -w /liquibase/resources \
                 "$LIQUIBASE_IMAGE" \
                 --url="$JDBC_URL" \
                 --username="$POSTGRES_USER" \
                 --password="$POSTGRES_PASSWORD" \
-                --changelog-file=db.changelog-master.yaml \
+                --changelog-file=db/changelog/db.changelog-master.yaml \
                 --log-level=INFO \
                 "$@"
             }
