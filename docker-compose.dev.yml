@@ -43,9 +43,10 @@ services:
   # INFRASTRUCTURE (BDD, Cache, Auth)
   # ==========================================
 
-  # Base de données PostgreSQL
+  # Base de données PostgreSQL — image pgvector (PG15 + extension vector)
+  # pour le support RAG/knowledge base de l'assistant IA.
   postgres:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15
     container_name: clenzy-postgres-dev
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
@@ -296,6 +297,10 @@ services:
       MAPBOX_ACCESS_TOKEN: ${MAPBOX_ACCESS_TOKEN:-}
       # Jasypt (chiffrement tokens Airbnb en base)
       JASYPT_ENCRYPTOR_PASSWORD: ${JASYPT_ENCRYPTOR_PASSWORD:-dev-jasypt-secret-key}
+      # Channex (Channel Manager — distribution OTAs)
+      CHANNEX_BASE_URL: ${CHANNEX_BASE_URL:-https://staging.channex.io/api/v1}
+      CHANNEX_API_KEY: ${CHANNEX_API_KEY:-}
+      CHANNEX_WEBHOOK_SECRET: ${CHANNEX_WEBHOOK_SECRET:-}
       # JaCoCo — chemin vers le rapport monte en volume
       CLENZY_JACOCO_REPORT_PATH: /app/jacoco/jacoco.xml
     ports:
