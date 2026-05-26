@@ -263,12 +263,24 @@ http {
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
 
-            # Cache assets statiques
-            location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+            # Defense en profondeur : explicit no-cache sur les routes SPA
+            # (le frontend container envoie deja ces headers, mais on les force
+            # ici aussi pour qu'un futur CDN/proxy intermediaire ne mette pas
+            # en cache index.html par heuristique).
+            proxy_hide_header Cache-Control;
+            proxy_hide_header Pragma;
+            proxy_hide_header Expires;
+            add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+            add_header Pragma "no-cache" always;
+            add_header Expires "0" always;
+
+            # Cache assets statiques (override : long terme + immutable)
+            location ~* \.(js|mjs|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot|webp|avif)$ {
                 set $pms_frontend_upstream http://clenzy-frontend:80;
                 proxy_pass $pms_frontend_upstream;
+                proxy_hide_header Cache-Control;
                 expires 1y;
-                add_header Cache-Control "public, immutable";
+                add_header Cache-Control "public, immutable" always;
                 access_log off;
             }
         }
