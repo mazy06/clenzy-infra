@@ -301,6 +301,11 @@ services:
       CHANNEX_BASE_URL: ${CHANNEX_BASE_URL:-https://staging.channex.io/api/v1}
       CHANNEX_API_KEY: ${CHANNEX_API_KEY:-}
       CHANNEX_WEBHOOK_SECRET: ${CHANNEX_WEBHOOK_SECRET:-}
+      # OpenWA (WhatsApp self-hosted, profile opt-in) — DNS interne Docker.
+      # Si le profile `openwa` n'est pas active, le pms-server resoudra ce
+      # hostname uniquement quand une org passera son provider en OPENWA et
+      # qu'un envoi sera tente — donc no-op si OpenWA n'est pas demarre.
+      OPENWA_BASE_URL: ${OPENWA_BASE_URL:-http://openwa:2785}
       # JaCoCo — chemin vers le rapport monte en volume
       CLENZY_JACOCO_REPORT_PATH: /app/jacoco/jacoco.xml
     ports:
@@ -445,6 +450,86 @@ services:
     networks:
       - clenzy-network
 
+  # ==========================================
+  # OpenWA — WhatsApp self-hosted (whatsapp-web.js + Puppeteer)
+  # ==========================================
+  # Provider alternatif a Meta Cloud API pour les orgs qui :
+  #   - veulent eviter les couts conversation-based de Meta
+  #   - n'ont pas (encore) de Meta Business Manager verifie
+  #   - testent Clenzy en trial avec leur WhatsApp perso
+  #
+  # ⚠️ HORS ToS Meta : usage du protocole Web non officiel. Risque ban du
+  # compte WhatsApp en cas d'abus. Disclaimer obligatoire dans l'UI de
+  # configuration. Cf. CLAUDE.md (section "Provider Strategy WhatsApp").
+  #
+  # Profile `openwa` : pas demarre par defaut (image lourde ~600 MB avec
+  # Chromium headless, +1.5 GB RAM par session). Activer avec :
+  #   docker compose -f docker-compose.dev.yml --env-file .env.dev --profile openwa up
+  #
+  # Setup prerequis (a faire UNE FOIS) :
+  #   1. git clone https://github.com/rmyndharis/OpenWA.git ./openwa
+  #   2. echo "OPENWA_API_MASTER_KEY=$(openssl rand -hex 32)" >> .env.dev
+  #
+  # Le dossier ./openwa/ est .gitignored — chaque dev clone sa copie.
+  openwa:
+    build:
+      context: ./openwa
+      dockerfile: Dockerfile
+    container_name: clenzy-openwa-dev
+    profiles:
+      - openwa
+    restart: unless-stopped
+    expose:
+      - "2785"
+    ports:
+      # Expose en dev pour acceder au dashboard React integre + Swagger
+      # (http://localhost:2785/api/docs). En prod, expose: seul (interne).
+      - "2785:2785"
+    environment:
+      NODE_ENV: development
+      PORT: 2785
+      LOG_LEVEL: debug
+      # SQLite suffit en dev : pas besoin de provisionner un Postgres
+      # dedie pour les ~5 sessions de test.
+      DATABASE_TYPE: sqlite
+      DATABASE_NAME: /app/data/openwa.sqlite
+      DATABASE_SYNCHRONIZE: "true"
+      # Engine : whatsapp-web.js + Puppeteer headless
+      ENGINE_TYPE: whatsapp-web.js
+      SESSION_DATA_PATH: /app/data/sessions
+      PUPPETEER_HEADLESS: "true"
+      PUPPETEER_ARGS: "--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage,--disable-gpu"
+      # Stockage media en local (volume), pas de S3 en dev
+      STORAGE_TYPE: local
+      STORAGE_LOCAL_PATH: /app/data/media
+      # Pas de Redis : OpenWA peut tourner sans (webhooks synchrones)
+      REDIS_ENABLED: "false"
+      # Webhooks : timeout/retry doux pour dev (eviter spam logs)
+      WEBHOOK_TIMEOUT: 10000
+      WEBHOOK_MAX_RETRIES: 3
+      WEBHOOK_RETRY_DELAY: 5000
+      # Rate limiting : valeurs dev permissives (Meta WhatsApp Cloud API a
+      # ~80 msg/s, on s'aligne en dev pour ne pas etre le bottleneck)
+      RATE_LIMIT_TTL: 60
+      RATE_LIMIT_MAX: 100
+      # Clef maitre admin (creation de sessions + API keys per-session).
+      # OBLIGATOIRE — sans ca, l'API refuse toute requete.
+      API_MASTER_KEY: ${OPENWA_API_MASTER_KEY}
+    volumes:
+      # Persistance des sessions WhatsApp + media. Sans ce volume,
+      # chaque restart oblige a re-scanner les QR codes (perte d'auth).
+      - openwa-data-dev:/app/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:2785/api/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      clenzy-network:
+        aliases:
+          - openwa
+
   # k6 — Load Testing (dev)
   # Usage : docker compose -f docker-compose.dev.yml run --rm k6 run /scripts/smoke-test.js
   k6:
@@ -485,6 +570,7 @@ volumes:
   prometheus-data-dev:
   grafana-data-dev:
   loki-data-dev:
+  openwa-data-dev:
 
 networks:
   clenzy-network:

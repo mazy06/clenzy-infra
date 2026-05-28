@@ -371,6 +371,72 @@ Tous les services communiquent via le reseau interne `clenzy-network`. Les alias
 | `clenzy-keycloak` | Keycloak            |
 | `clenzy-redis`    | Redis               |
 | `postgres`        | PostgreSQL          |
+| `openwa`          | OpenWA (WhatsApp self-hosted, profile `openwa`) |
+
+## OpenWA — WhatsApp self-hosted (profile opt-in)
+
+[OpenWA](https://github.com/rmyndharis/OpenWA) est un provider WhatsApp alternatif a Meta Cloud API, base sur `whatsapp-web.js` + Puppeteer. Il permet aux orgs Clenzy de :
+- Eviter les couts conversation-based de Meta (~$30-100/org/mois)
+- S'onboarder en 5 minutes (scan QR code, pas de Meta Business Manager)
+- Tester Clenzy en trial avec leur WhatsApp perso
+
+> ⚠️ **HORS ToS Meta** : OpenWA utilise le protocole Web WhatsApp non officiel. Risque de ban du compte WhatsApp en cas d'abus ou de detection automation. Disclaimer obligatoire dans l'UI de configuration. **Reserve aux trials / MVP** — pour le B2B serieux et la compliance, garder Meta Cloud API officielle.
+
+### Setup (UNE FOIS par environnement)
+
+```bash
+# 1. Clone le repo OpenWA dans clenzy-infra/openwa/ + genere OPENWA_API_MASTER_KEY
+./scripts/setup-openwa.sh
+
+# 2. Demarrer le service (profile opt-in)
+docker compose -f docker-compose.dev.yml --env-file .env.dev --profile openwa up -d openwa
+
+# 3. Verifier
+curl http://localhost:2785/api/health
+# Dashboard + Swagger : http://localhost:2785/api/docs
+```
+
+### Architecture
+
+```
+pms-server (Spring Boot)
+       │
+       │ HTTP REST + X-API-Key per-session
+       ▼
+   openwa:2785 (NestJS + whatsapp-web.js + Puppeteer)
+       │
+       │ WebSocket protocole WhatsApp Web
+       ▼
+   web.whatsapp.com
+```
+
+- **Provider strategy** : chaque org Clenzy choisit son provider (META par defaut, OPENWA en option) via Settings > Notifications > WhatsApp. Cf. table `whatsapp_configs.provider`, migration 0153.
+- **Resolution dynamique** : `WhatsAppProviderResolver` route les envois au bon provider en fonction de `WhatsAppConfig` de l'org courante. Aucune modification metier dans `GuestMessagingService` / `BriefingDelivery`.
+- **Sessions persistees** : volume `openwa-data-dev` (et `openwa-data-prod`) garde les sessions WhatsApp scannees QR — pas de re-scan apres restart container.
+
+### Commandes utiles
+
+```bash
+# Demarrer / arreter OpenWA seul (sans toucher aux autres services)
+docker compose -f docker-compose.dev.yml --profile openwa up -d openwa
+docker compose -f docker-compose.dev.yml --profile openwa stop openwa
+
+# Logs (utile pour debug session WhatsApp deconnectee)
+docker logs -f clenzy-openwa-dev
+
+# Reset complet d'une session (effacer le volume = re-scan QR oblige)
+docker compose -f docker-compose.dev.yml --profile openwa down -v openwa
+```
+
+### Limites connues (vs Meta Cloud API)
+
+- ❌ Pas de templates Meta-approuves (pas de message hors fenetre 24h structures)
+- ❌ Pas de boutons interactifs / listes / WhatsApp Flows
+- ⚠️ Rate limiting agressif (20 msg/min, 200/h) pour eviter le ban
+- ⚠️ Session expire si l'utilisateur deconnecte WhatsApp Web depuis son tel
+- ⚠️ `whatsapp-web.js` est alpha — peut casser si Meta change le protocole
+
+Cf. tableau comparatif complet dans `docs/whatsapp-providers.md` (TODO Phase 5).
 
 ## Depannage
 

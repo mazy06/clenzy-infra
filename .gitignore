@@ -16,6 +16,11 @@ PROD_ENV_FILE_B64.txt
 postgres-data-*/
 redis-data-*/
 
+# OpenWA (WhatsApp self-hosted) — clone manuel, jamais commit
+# Cloner avec : git clone https://github.com/rmyndharis/OpenWA.git ./openwa
+# Cf. docker-compose.dev.yml profile `openwa` et README section "OpenWA setup"
+openwa/
+
 # k6 load test results
 k6/results/*.json
 !k6/results/.gitkeep
