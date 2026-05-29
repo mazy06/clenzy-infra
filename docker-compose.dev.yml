@@ -319,6 +319,10 @@ services:
       - contact-uploads-dev:/app/uploads/contact
       - document-templates-dev:/app/uploads/templates
       - document-generated-dev:/app/uploads/documents
+      # Sans ce volume, les photos de profil uploadees etaient perdues a
+      # chaque restart du container (le filesystem ephemere etait recree),
+      # alors que users.profile_picture_url restait en DB -> 404 a la sortie.
+      - user-avatars-dev:/app/uploads/user-avatars
       - ../clenzy/server/target/site/jacoco:/app/jacoco:ro
     networks:
       clenzy-network:
@@ -481,6 +485,7 @@ volumes:
   contact-uploads-dev:
   document-templates-dev:
   document-generated-dev:
+  user-avatars-dev:
   prometheus-data-dev:
   grafana-data-dev:
   loki-data-dev:
