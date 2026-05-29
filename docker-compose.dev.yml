@@ -319,10 +319,10 @@ services:
       - contact-uploads-dev:/app/uploads/contact
       - document-templates-dev:/app/uploads/templates
       - document-generated-dev:/app/uploads/documents
-      # Sans ce volume, les photos de profil uploadees etaient perdues a
-      # chaque restart du container (le filesystem ephemere etait recree),
-      # alors que users.profile_picture_url restait en DB -> 404 a la sortie.
-      - user-avatars-dev:/app/uploads/user-avatars
+      # NOTE: user-avatars-dev n'est plus monte — les avatars sont stockes
+      # en Postgres BYTEA via BinaryAssetStorage (migration 0159). Le volume
+      # est conserve dans la section `volumes:` ci-dessous comme orphelin
+      # (a supprimer apres confirmation que rien d'utile n'y reste).
       - ../clenzy/server/target/site/jacoco:/app/jacoco:ro
     networks:
       clenzy-network:
