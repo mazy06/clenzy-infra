@@ -45,7 +45,11 @@ services:
 
   # Base de données PostgreSQL
   postgres:
-    image: postgres:15-alpine
+    # Image avec extension pgvector pre-installee (requise pour kb_chunk RAG).
+    # Voir CLAUDE.md - sans cette image, la migration 0143 ET le boot
+    # Hibernate (schema introspection sur kb_chunk) echouent avec
+    # "could not access file $libdir/vector".
+    image: pgvector/pgvector:pg15
     container_name: clenzy-postgres-dev
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
