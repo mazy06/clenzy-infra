@@ -91,8 +91,15 @@ services:
   # ==========================================
 
   # Base de données PostgreSQL (Primary)
+  # Image avec extension pgvector preinstallee (requise pour le changeset
+  # Liquibase 0143-add-pgvector-extension et l'embedding store de l'assistant
+  # IA, table kb_chunk avec vector(1024) + ivfflat index). Aligne sur dev
+  # (cf. docker-compose.dev.yml commit 50679c6). Sans cette image, le boot
+  # de pms-server-prod crash-loop avec "extension vector is not available"
+  # car postgres:15-alpine n'inclut pas pgvector dans
+  # /usr/local/share/postgresql/extension/.
   postgres:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15
     container_name: clenzy-postgres-prod
     restart: unless-stopped
     environment:
