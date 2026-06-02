@@ -5,6 +5,9 @@
 # Logique de deploiement extraite du workflow CD.
 # Execute par cd-deploy.yml apres git pull et provisioning .env.
 #
+# Redeploy 2026-06-02 : relance de la stack (mode update) apres annulation
+# d'un full-rebuild interrompu — incident prod down. Aucun changement de logique.
+#
 # Pre-requis :
 #   - Working directory = racine clenzy-infra
 #   - .env charge dans le shell (set -a; . ./.env; set +a)
