@@ -430,6 +430,10 @@ services:
       IMAP_USERNAME: ${IMAP_USERNAME:-info@clenzy.fr}
       IMAP_PASSWORD: ${IMAP_PASSWORD:-${MAIL_PASSWORD:-}}
       IMAP_ENABLED: ${IMAP_ENABLED:-true}
+      # Brevo Contacts API (sync waitlist de lancement — optionnel, best-effort).
+      # Defauts vides => BrevoContactService.isConfigured()=false => sync ignoree (no-op).
+      BREVO_API_KEY: ${BREVO_API_KEY:-}
+      BREVO_WAITLIST_LIST_ID: ${BREVO_WAITLIST_LIST_ID:-0}
       # CORS
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://${APP_DOMAIN}}
       SERVER_PORT: 8080
