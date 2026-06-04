@@ -258,8 +258,6 @@ http {
         # Strip du préfixe /media : go2rtc sert ses pages/API à la racine.
         location /media/ {
             set $go2rtc_upstream http://clenzy-go2rtc:1984;
-            # Autorisation : valide le ticket HMAC (scope au flux) avant de servir go2rtc.
-            auth_request /__media_authz;
             rewrite ^/media/(.*)$ /$1 break;
             proxy_pass $go2rtc_upstream;
             proxy_http_version 1.1;
@@ -270,18 +268,6 @@ http {
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_read_timeout 3600s;
-        }
-
-        # Autorisation interne des flux media : delegue la validation du ticket HMAC au backend
-        # Clenzy. Appelee en sous-requete par l'auth_request ci-dessus (200 = autorise, 403 = refuse).
-        # src/t proviennent de la requete d'origine ($arg_* preserves par le rewrite).
-        location = /__media_authz {
-            internal;
-            proxy_pass http://clenzy-server:8080/api/media/verify;
-            proxy_pass_request_body off;
-            proxy_set_header Content-Length "";
-            proxy_set_header X-Media-Src $arg_src;
-            proxy_set_header X-Media-Ticket $arg_t;
         }
 
         # Frontend React (PMS)
