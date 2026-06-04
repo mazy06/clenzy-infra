@@ -336,6 +336,27 @@ services:
           - clenzy-libreoffice
 
   # ==========================================
+  # go2rtc — passerelle media cameras (RTSP -> WebRTC)
+  # ==========================================
+  go2rtc:
+    image: alexxit/go2rtc:1.9.4
+    container_name: clenzy-go2rtc-prod
+    restart: unless-stopped
+    ports:
+      - "8555:8555/tcp"    # WebRTC media (ICE direct, hors nginx)
+      - "8555:8555/udp"
+    volumes:
+      - ./go2rtc/go2rtc.yaml:/config/go2rtc.yaml:ro
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    networks:
+      clenzy-network:
+        aliases:
+          - clenzy-go2rtc
+
+  # ==========================================
   # PMS (Application métier)
   # ==========================================
 
