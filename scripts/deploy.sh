@@ -308,14 +308,31 @@ done
 # 6. Keycloak readiness HTTP + admin sync
 # ===========================================
 
+# Sonde le readiness HTTP de Keycloak sans dependre d'un binaire absent.
+# Keycloak 24 sert /health/ready sur le port HTTP principal 8080 (le port
+# management dedie 9000 n'existe qu'a partir de Keycloak 25) ; on tente 8080
+# puis 9000 par securite. Le wget/curl est lance depuis un container qui
+# possede un client HTTP : postgres (Debian) n'a NI wget NI curl, ce qui
+# faisait echouer le check en silence (faux negatif depuis 2026-06-04) — on
+# essaie donc plusieurs containers (redis/nginx alpine ont busybox wget).
+kc_health_probe() {
+  for _c in redis nginx pms-server keycloak postgres; do
+    for _u in http://clenzy-keycloak:8080/health/ready http://clenzy-keycloak:9000/health/ready; do
+      _out=$($DC exec -T "$_c" sh -c "wget -qO- $_u 2>/dev/null || curl -sf $_u 2>/dev/null" 2>/dev/null || true)
+      if printf '%s' "$_out" | grep -q '"status"[[:space:]]*:[[:space:]]*"UP"'; then
+        printf '%s' "$_out"
+        return 0
+      fi
+    done
+  done
+  return 1
+}
+
 if echo " $HEALTH_SERVICES " | grep -q " keycloak "; then
   echo "🔎 Verification readiness HTTP de Keycloak..."
-  # Keycloak 24 (Quarkus) sert /health sur le port management 9000 quand
-  # KC_HEALTH_ENABLED=true — PAS sur le port applicatif 8080 (qui renvoie 404).
-  # Repli 8080 conserve pour compat si le management port differe.
   KEYCLOAK_READY=0
   for _ in $(seq 1 60); do
-    READY_PAYLOAD=$($DC exec -T postgres sh -c "wget -qO- http://clenzy-keycloak:9000/health/ready 2>/dev/null || wget -qO- http://clenzy-keycloak:8080/health/ready 2>/dev/null" 2>/dev/null || true)
+    READY_PAYLOAD=$(kc_health_probe || true)
     if echo "$READY_PAYLOAD" | grep -q '"status"[[:space:]]*:[[:space:]]*"UP"'; then
       KEYCLOAK_READY=1
       break
@@ -399,7 +416,7 @@ if echo " $HEALTH_SERVICES " | grep -q " keycloak "; then
             echo "   Redemarrage de Keycloak (flush cache)..."
             $DC restart keycloak
             for _ in $(seq 1 40); do
-              KC_READY2=$($DC exec -T postgres sh -c "wget -qO- http://clenzy-keycloak:9000/health/ready 2>/dev/null || wget -qO- http://clenzy-keycloak:8080/health/ready 2>/dev/null" 2>/dev/null || true)
+              KC_READY2=$(kc_health_probe || true)
               if echo "$KC_READY2" | grep -q '"status"[[:space:]]*:[[:space:]]*"UP"'; then break; fi
               sleep 3
             done
