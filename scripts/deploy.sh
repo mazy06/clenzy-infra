@@ -310,9 +310,12 @@ done
 
 if echo " $HEALTH_SERVICES " | grep -q " keycloak "; then
   echo "🔎 Verification readiness HTTP de Keycloak..."
+  # Keycloak 24 (Quarkus) sert /health sur le port management 9000 quand
+  # KC_HEALTH_ENABLED=true — PAS sur le port applicatif 8080 (qui renvoie 404).
+  # Repli 8080 conserve pour compat si le management port differe.
   KEYCLOAK_READY=0
   for _ in $(seq 1 60); do
-    READY_PAYLOAD=$($DC exec -T postgres sh -c "wget -qO- http://clenzy-keycloak:8080/health/ready" 2>/dev/null || true)
+    READY_PAYLOAD=$($DC exec -T postgres sh -c "wget -qO- http://clenzy-keycloak:9000/health/ready 2>/dev/null || wget -qO- http://clenzy-keycloak:8080/health/ready 2>/dev/null" 2>/dev/null || true)
     if echo "$READY_PAYLOAD" | grep -q '"status"[[:space:]]*:[[:space:]]*"UP"'; then
       KEYCLOAK_READY=1
       break
@@ -396,7 +399,7 @@ if echo " $HEALTH_SERVICES " | grep -q " keycloak "; then
             echo "   Redemarrage de Keycloak (flush cache)..."
             $DC restart keycloak
             for _ in $(seq 1 40); do
-              KC_READY2=$($DC exec -T postgres sh -c "wget -qO- http://clenzy-keycloak:8080/health/ready" 2>/dev/null || true)
+              KC_READY2=$($DC exec -T postgres sh -c "wget -qO- http://clenzy-keycloak:9000/health/ready 2>/dev/null || wget -qO- http://clenzy-keycloak:8080/health/ready 2>/dev/null" 2>/dev/null || true)
               if echo "$KC_READY2" | grep -q '"status"[[:space:]]*:[[:space:]]*"UP"'; then break; fi
               sleep 3
             done
