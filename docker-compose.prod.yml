@@ -435,8 +435,13 @@ services:
       # passe en mode strict (echec de dechiffrement = FieldDecryptionException) ; tant
       # que d'eventuelles lignes legacy en clair ne sont pas backfillees, false sert la
       # valeur brute en loggant l'echec en ERROR (evite de casser le login). Repasser a
-      # true (defaut code) une fois le backfill confirme. Surcharge possible via .env.
-      CLENZY_SECURITY_FIELDENCRYPTION_FAILONDECRYPTERROR: "${CLENZY_FIELD_ENCRYPTION_FAIL_ON_DECRYPT_ERROR:-false}"
+      # true (defaut code) une fois le backfill confirme.
+      # TEMPORAIRE (backfill DS1, audit 2026-06) : valeur FORCEE a "false" — on retire
+      # volontairement la surcharge ${...} le temps que le runner SecretColumnEncryptionBackfill
+      # chiffre les colonnes legacy (api_key/access_code/wifi_password/extra_access_codes) au boot,
+      # pour garantir le mode tolerant quel que soit le .env du VPS. A RESTAURER en
+      # "${CLENZY_FIELD_ENCRYPTION_FAIL_ON_DECRYPT_ERROR:-false}" une fois le backfill confirme dans les logs.
+      CLENZY_SECURITY_FIELDENCRYPTION_FAILONDECRYPTERROR: "false"
       # Airbnb Integration
       AIRBNB_CLIENT_ID: ${AIRBNB_CLIENT_ID:-}
       AIRBNB_CLIENT_SECRET: ${AIRBNB_CLIENT_SECRET:-}
