@@ -1,0 +1,24 @@
+# ============================================================================
+# go2rtc — passerelle media (RTSP/ONVIF -> WebRTC) pour les cameras Clenzy
+# ============================================================================
+# Les flux (streams) sont ajoutes/retires DYNAMIQUEMENT par le backend via
+# l'API go2rtc (http://clenzy-go2rtc:1984/api/streams) a la creation/suppression
+# d'une camera. Aucun stream statique ici.
+#
+# Acces :
+#   - API + lecture WebRTC : http://clenzy-go2rtc:1984 (interne, proxifie /media/)
+#   - media WebRTC          : port 8555 (TCP/UDP, ICE direct)
+# ============================================================================
+
+api:
+  listen: ":1984"
+
+webrtc:
+  listen: ":8555"
+  # STUN pour la decouverte de l'IP publique (ICE). A remplacer par l'IP
+  # publique du serveur si STUN insuffisant : candidates: ["1.2.3.4:8555"].
+  candidates:
+    - stun:8555
+
+log:
+  level: info

@@ -5,6 +5,9 @@
 # Logique de deploiement extraite du workflow CD.
 # Execute par cd-deploy.yml apres git pull et provisioning .env.
 #
+# Redeploy 2026-06-02 : relance de la stack (mode update) apres annulation
+# d'un full-rebuild interrompu — incident prod down. Aucun changement de logique.
+#
 # Pre-requis :
 #   - Working directory = racine clenzy-infra
 #   - .env charge dans le shell (set -a; . ./.env; set +a)
@@ -14,6 +17,49 @@
 set -e
 
 DC="docker compose -f docker-compose.prod.yml --env-file .env"
+
+# ===========================================
+# Observabilite deploiement (Pushgateway + Alertmanager)
+# ===========================================
+# Statut du deploiement pousse au Pushgateway (scrute par Prometheus) :
+#   - clenzy_deploy_status            (job clenzy-deploy)          : 1=OK, 0=KO du DERNIER deploy
+#   - clenzy_deploy_last_success_timestamp_seconds (job clenzy-deploy-success) : horodatage du
+#     dernier succes, dans un job SEPARE pour survivre aux pushes d'echec (regle ClenzyDeployStale).
+PUSHGATEWAY_URL="${DEPLOY_PUSHGATEWAY_URL:-http://127.0.0.1:9091}"
+
+push_metric() { # $1=job  $2=corps-metrics
+  printf '%s\n' "$2" \
+    | curl -fsS --max-time 5 --data-binary @- "${PUSHGATEWAY_URL}/metrics/job/$1" >/dev/null 2>&1 \
+    && return 0 || return 1
+}
+
+on_exit() {
+  local rc=$?
+  if [ "$rc" -eq 0 ]; then
+    if push_metric clenzy-deploy "clenzy_deploy_status 1" \
+       && push_metric clenzy-deploy-success "clenzy_deploy_last_success_timestamp_seconds $(date +%s)"; then
+      echo "   📈 Statut deploiement pousse au Pushgateway (succes)."
+    fi
+  else
+    push_metric clenzy-deploy "clenzy_deploy_status 0" \
+      && echo "   📈 Statut deploiement pousse au Pushgateway (echec)." || true
+  fi
+}
+trap on_exit EXIT
+
+# Token partage Alertmanager -> app (credentials_file lu par Alertmanager). Ecrit depuis
+# l'env (.env charge par cd-deploy) ; jamais commite. Memo valeur que CLENZY_OPS_ALERT_TOKEN
+# cote pms-server et le secret GitHub OPS_ALERT_TOKEN.
+# On ecrit TOUJOURS le fichier (vide si token absent) : Alertmanager refuse de demarrer
+# si son credentials_file est introuvable. Vide -> l'app rejette (fail-closed), mais le
+# conteneur tourne au lieu de crash-looper.
+mkdir -p monitoring/alertmanager
+( umask 077; printf '%s' "${CLENZY_OPS_ALERT_TOKEN:-}" > monitoring/alertmanager/ops_token )
+if [ -n "${CLENZY_OPS_ALERT_TOKEN:-}" ]; then
+  echo "🔐 Token Alertmanager provisionne (monitoring/alertmanager/ops_token)."
+else
+  echo "⚠️  CLENZY_OPS_ALERT_TOKEN absent : fichier token vide ecrit (Alertmanager ne pourra pas notifier l'app)."
+fi
 
 # ===========================================
 # 0. Pre-flight checks
@@ -106,7 +152,30 @@ if [ -d "$CLENZY_APP_DIR/.git" ]; then
     echo "      Si git reset echoue, configurer NOPASSWD pour l'utilisateur de deploiement."
   fi
 
-  git fetch origin production
+  # Authentifier le fetch via un token injecte par le workflow CD (secret GitHub Actions,
+  # rotatable de maniere centralisee) plutot qu'un PAT longue-duree fige dans l'URL du remote
+  # sur le VPS. Incident 2026-06 : ce PAT a expire -> tous les CD Deploy echouaient sur
+  # "Authentication failed for github.com/<owner>/clenzy.git", le backend restait bloque sur une
+  # ancienne image et la generation des devis tombait en echec.
+  # Token : DEPLOY_APP_GIT_TOKEN (secret CLENZY_APP_GIT_TOKEN) si fourni, sinon repli sur
+  # DEPLOY_GHCR_TOKEN (deja valide, utilise pour ghcr.io).
+  APP_REPO_SLUG="${DEPLOY_APP_REPO:-${DEPLOY_GHCR_OWNER:-mazy06}/clenzy}"
+  APP_REPO_URL="https://github.com/${APP_REPO_SLUG}.git"
+  APP_GIT_TOKEN="${DEPLOY_APP_GIT_TOKEN:-${DEPLOY_GHCR_TOKEN:-}}"
+  if [ -n "$APP_GIT_TOKEN" ]; then
+    git remote set-url origin "https://x-access-token:${APP_GIT_TOKEN}@github.com/${APP_REPO_SLUG}.git"
+  fi
+
+  fetch_rc=0
+  git fetch origin production || fetch_rc=$?
+  # Toujours restaurer une URL sans secret (ne pas laisser le token en clair dans .git/config sur le VPS)
+  git remote set-url origin "$APP_REPO_URL"
+  if [ "$fetch_rc" -ne 0 ]; then
+    echo "❌ Echec du fetch du repo applicatif clenzy (token d'authentification invalide ou expire ?)."
+    echo "   Verifier le secret CLENZY_APP_GIT_TOKEN (ou le scope repo de GHCR_TOKEN)."
+    exit 1
+  fi
+
   git checkout production 2>/dev/null || git checkout -b production origin/production
   git reset --hard origin/production
   # Nettoyer les fichiers non suivis (hors gitignore) — evite les conflits au prochain pull
@@ -305,11 +374,31 @@ done
 # 6. Keycloak readiness HTTP + admin sync
 # ===========================================
 
+# Sonde le readiness HTTP de Keycloak sans dependre d'un binaire absent.
+# Keycloak 24 sert /health/ready sur le port HTTP principal 8080 (le port
+# management dedie 9000 n'existe qu'a partir de Keycloak 25) ; on tente 8080
+# puis 9000 par securite. Le wget/curl est lance depuis un container qui
+# possede un client HTTP : postgres (Debian) n'a NI wget NI curl, ce qui
+# faisait echouer le check en silence (faux negatif depuis 2026-06-04) — on
+# essaie donc plusieurs containers (redis/nginx alpine ont busybox wget).
+kc_health_probe() {
+  for _c in redis nginx pms-server keycloak postgres; do
+    for _u in http://clenzy-keycloak:8080/health/ready http://clenzy-keycloak:9000/health/ready; do
+      _out=$($DC exec -T "$_c" sh -c "wget -qO- $_u 2>/dev/null || curl -sf $_u 2>/dev/null" 2>/dev/null || true)
+      if printf '%s' "$_out" | grep -q '"status"[[:space:]]*:[[:space:]]*"UP"'; then
+        printf '%s' "$_out"
+        return 0
+      fi
+    done
+  done
+  return 1
+}
+
 if echo " $HEALTH_SERVICES " | grep -q " keycloak "; then
   echo "🔎 Verification readiness HTTP de Keycloak..."
   KEYCLOAK_READY=0
   for _ in $(seq 1 60); do
-    READY_PAYLOAD=$($DC exec -T postgres sh -c "wget -qO- http://clenzy-keycloak:8080/health/ready" 2>/dev/null || true)
+    READY_PAYLOAD=$(kc_health_probe || true)
     if echo "$READY_PAYLOAD" | grep -q '"status"[[:space:]]*:[[:space:]]*"UP"'; then
       KEYCLOAK_READY=1
       break
@@ -393,7 +482,7 @@ if echo " $HEALTH_SERVICES " | grep -q " keycloak "; then
             echo "   Redemarrage de Keycloak (flush cache)..."
             $DC restart keycloak
             for _ in $(seq 1 40); do
-              KC_READY2=$($DC exec -T postgres sh -c "wget -qO- http://clenzy-keycloak:8080/health/ready" 2>/dev/null || true)
+              KC_READY2=$(kc_health_probe || true)
               if echo "$KC_READY2" | grep -q '"status"[[:space:]]*:[[:space:]]*"UP"'; then break; fi
               sleep 3
             done
