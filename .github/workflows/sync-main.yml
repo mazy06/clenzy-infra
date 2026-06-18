@@ -1,0 +1,76 @@
+name: Sync main with production
+
+# Pourquoi ce workflow ?
+# Sur clenzy-infra, les PR sont mergees directement sur `production` (branche de
+# deploiement), tandis que `main` porte AUSSI des commits dev-only
+# (docker-compose.dev.yml, config dev, etc.). Sans synchronisation, `main` prend du
+# retard sur les commits de production (#67->#77, fix deploy, monitoring...).
+#
+# Consequence concrete (incident 2026-06-18) : un `workflow_dispatch` ou un
+# `repository_dispatch` execute le workflow de la branche PAR DEFAUT (= main). Un
+# `cd-deploy.yml` perime sur main -> variable DEPLOY_APP_GIT_TOKEN absente -> repli
+# sur un token sans scope repo -> 403 au git fetch du repo applicatif. Regle : `main`
+# ne doit JAMAIS etre en retard sur `production`.
+#
+# A chaque push sur `production` (donc apres chaque deploiement), ce job rapatrie les
+# commits de production dans `main`. Contrairement au sync-main.yml de clenzy/ (qui
+# fait un simple fast-forward), `main` peut avoir ses propres commits dev -> un
+# fast-forward est impossible, on fait donc un MERGE.
+#
+# Securite :
+# - `main` ne declenche AUCUN deploiement (les deploiements sont sur `production`) ->
+#   pousser sur `main` est sans effet sur la prod.
+# - En cas de conflit, le job echoue BRUYAMMENT : reconciliation manuelle requise
+#   (merge local + resolution, cf. PR #78). On ne force jamais, aucune perte de commit.
+# - Aucune entree non fiable (github.event.*) n'est utilisee dans les commandes run.
+
+on:
+  push:
+    branches:
+      - production
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-main-with-production
+  cancel-in-progress: false
+
+jobs:
+  merge-production-into-main:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main (historique complet)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Merge production dans main
+        run: |
+          set -euo pipefail
+          git config user.name  "clenzy-ci"
+          git config user.email "ci@clenzy.fr"
+          git fetch --quiet origin main production
+          PROD_SHA="$(git rev-parse origin/production)"
+          MAIN_SHA="$(git rev-parse origin/main)"
+          echo "production = $PROD_SHA"
+          echo "main       = $MAIN_SHA"
+
+          # main contient deja tout production ? (production est un ancetre de main) -> rien a faire.
+          if git merge-base --is-ancestor "$PROD_SHA" "$MAIN_SHA"; then
+            echo "main contient deja production — rien a faire."
+            exit 0
+          fi
+
+          # Sinon : rapatrier production dans main par un merge non fast-forward.
+          git checkout main
+          if git merge --no-ff "$PROD_SHA" -m "chore(sync): merge production into main (auto)"; then
+            git push origin main
+            echo "production merge dans main et pousse ($PROD_SHA)."
+          else
+            echo "::error::Conflit en mergeant production dans main : reconciliation manuelle requise (merge local + resolution, cf. PR #78)."
+            git merge --abort || true
+            exit 1
+          fi
