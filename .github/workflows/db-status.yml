@@ -44,6 +44,11 @@ on:
         required: false
         default: 'liquibase/liquibase:4.29.2'
         type: string
+      dump_check_constraints:
+        description: 'Liste les contraintes CHECK ressemblant a des enum (drift Hibernate, read-only)'
+        required: false
+        default: false
+        type: boolean
   schedule:
     - cron: '0 6 * * *'
 
@@ -63,12 +68,13 @@ jobs:
           INFRA_DIR_VALUE: ${{ vars.VPS_INFRA_DIR }}
           LIQUIBASE_IMAGE: ${{ inputs.liquibase_image || 'liquibase/liquibase:4.29.2' }}
           VERBOSE_DUMP: ${{ inputs.verbose && 'true' || 'false' }}
+          DUMP_CHECKS: ${{ inputs.dump_check_constraints && 'true' || 'false' }}
         with:
           host: ${{ secrets.VPS_HOST != '' && secrets.VPS_HOST || vars.VPS_HOST }}
           username: ${{ secrets.VPS_USER != '' && secrets.VPS_USER || vars.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT || 22 }}
-          envs: INFRA_DIR_VALUE,LIQUIBASE_IMAGE,VERBOSE_DUMP
+          envs: INFRA_DIR_VALUE,LIQUIBASE_IMAGE,VERBOSE_DUMP,DUMP_CHECKS
           command_timeout: 5m
           script: |
             set -e
@@ -175,6 +181,18 @@ jobs:
               echo "Last 10 tracked changesets :"
               $DC exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
                 -c "SELECT id, author, exectype, dateexecuted, tag FROM databasechangelog ORDER BY orderexecuted DESC LIMIT 10;" \
+                2>&1 || true
+            fi
+
+            if [ "$DUMP_CHECKS" = "true" ]; then
+              echo ""
+              echo "=== Contraintes CHECK ressemblant a des enum (drift Hibernate potentiel) ==="
+              # Requete FIXE, lecture seule : CHECK dont la definition contient des litteraux
+              # en MAJUSCULE (signature des CHECK d'enum generes par Hibernate, ex.
+              # action IN ('CREATE','COMPLIANCE_CHECK',...)). Aide a reperer les futures bombes
+              # a retardement type 0164/0272/0273.
+              $DC exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+                -c "SELECT conrelid::regclass AS table_name, conname, pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE contype='c' AND pg_get_constraintdef(oid) ~ '''[A-Z][A-Z_]{2,}''' ORDER BY 1,2;" \
                 2>&1 || true
             fi
 
