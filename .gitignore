@@ -5,6 +5,9 @@
 prod.env
 PROD_ENV_FILE_B64.txt
 
+# Token Alertmanager -> app (ecrit au deploiement depuis CLENZY_OPS_ALERT_TOKEN)
+monitoring/alertmanager/ops_token
+
 # SSL certificates (production)
 # Les certificats auto-signés de dev sont versionnés
 # En prod, remplacer par de vrais certificats (Let's Encrypt, etc.)

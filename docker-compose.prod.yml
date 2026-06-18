@@ -336,6 +336,27 @@ services:
           - clenzy-libreoffice
 
   # ==========================================
+  # go2rtc — passerelle media cameras (RTSP -> WebRTC)
+  # ==========================================
+  go2rtc:
+    image: alexxit/go2rtc:1.9.4
+    container_name: clenzy-go2rtc-prod
+    restart: unless-stopped
+    ports:
+      - "8555:8555/tcp"    # WebRTC media (ICE direct, hors nginx)
+      - "8555:8555/udp"
+    volumes:
+      - ./go2rtc/go2rtc.yaml:/config/go2rtc.yaml:ro
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    networks:
+      clenzy-network:
+        aliases:
+          - clenzy-go2rtc
+
+  # ==========================================
   # PMS (Application métier)
   # ==========================================
 
@@ -363,7 +384,15 @@ services:
       # DDL_AUTO reste a 'update' pour cette premiere bascule (transition
       # douce, on ne change qu'une variable a la fois). Passage a 'validate'
       # envisage en Phase 5b-tail apres 1 semaine d'observation stable.
-      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      # Phase 5b-tail (2026-05-21 23:05 UTC) : ddl-auto passe de 'update' a
+      # 'validate'. Liquibase est desormais l'unique source de verite pour
+      # le schema (PR clenzy-infra #60, Phase 5b-bis active). Hibernate
+      # n'ajustera plus le schema au boot, il verifiera juste que le
+      # schema matche les entites JPA. Toute divergence future fera
+      # planter le boot (desirable : on saura immediatement qu'un changeset
+      # Liquibase manque pour une nouvelle entite, plutot qu'avoir des
+      # modifications schema silencieuses au runtime).
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
       SPRING_LIQUIBASE_ENABLED: "true"
       FRONTEND_URL: https://app.clenzy.fr
       # Mapbox (carte dans les emails check-in)
@@ -410,6 +439,20 @@ services:
       CHANNEX_BASE_URL: ${CHANNEX_BASE_URL:-https://app.channex.io/api/v1}
       CHANNEX_API_KEY: ${CHANNEX_API_KEY:-}
       CHANNEX_WEBHOOK_SECRET: ${CHANNEX_WEBHOOK_SECRET:-}
+      # Token partage des alertes ops (POST /api/ops/alerts) -> clenzy.ops.alert-token.
+      # Meme valeur que le secret GitHub OPS_ALERT_TOKEN et le credentials_file Alertmanager.
+      CLENZY_OPS_ALERT_TOKEN: ${CLENZY_OPS_ALERT_TOKEN:-}
+      # EncryptedFieldConverter (audit Z1-SEC-08) : soupape transitoire. Le converter
+      # passe en mode strict (echec de dechiffrement = FieldDecryptionException) ; tant
+      # que d'eventuelles lignes legacy en clair ne sont pas backfillees, false sert la
+      # valeur brute en loggant l'echec en ERROR (evite de casser le login). Repasser a
+      # true (defaut code) une fois le backfill confirme.
+      # TEMPORAIRE (backfill DS1, audit 2026-06) : valeur FORCEE a "false" — on retire
+      # volontairement la surcharge ${...} le temps que le runner SecretColumnEncryptionBackfill
+      # chiffre les colonnes legacy (api_key/access_code/wifi_password/extra_access_codes) au boot,
+      # pour garantir le mode tolerant quel que soit le .env du VPS. A RESTAURER en
+      # "${CLENZY_FIELD_ENCRYPTION_FAIL_ON_DECRYPT_ERROR:-false}" une fois le backfill confirme dans les logs.
+      CLENZY_SECURITY_FIELDENCRYPTION_FAILONDECRYPTERROR: "false"
       # Airbnb Integration
       AIRBNB_CLIENT_ID: ${AIRBNB_CLIENT_ID:-}
       AIRBNB_CLIENT_SECRET: ${AIRBNB_CLIENT_SECRET:-}
@@ -430,6 +473,10 @@ services:
       IMAP_USERNAME: ${IMAP_USERNAME:-info@clenzy.fr}
       IMAP_PASSWORD: ${IMAP_PASSWORD:-${MAIL_PASSWORD:-}}
       IMAP_ENABLED: ${IMAP_ENABLED:-true}
+      # Brevo Contacts API (sync waitlist de lancement — optionnel, best-effort).
+      # Defauts vides => BrevoContactService.isConfigured()=false => sync ignoree (no-op).
+      BREVO_API_KEY: ${BREVO_API_KEY:-}
+      BREVO_WAITLIST_LIST_ID: ${BREVO_WAITLIST_LIST_ID:-0}
       # CORS
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://${APP_DOMAIN}}
       SERVER_PORT: 8080
@@ -488,6 +535,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/rules:/etc/prometheus/rules:ro
       - prometheus-data-prod:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -543,6 +591,39 @@ services:
         aliases:
           - loki
 
+  # Alertmanager — Routage des alertes Prometheus vers la notif in-app
+  # (webhook -> POST /api/ops/alerts/alertmanager). Interne (non expose).
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: clenzy-alertmanager-prod
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/alertmanager:/etc/alertmanager:ro
+      - alertmanager-data-prod:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    expose:
+      - "9093"
+    depends_on:
+      pms-server:
+        condition: service_started
+    networks:
+      - clenzy-network
+
+  # Pushgateway — recoit le statut de deploiement pousse par scripts/deploy.sh.
+  # Bind localhost uniquement (le script tourne sur l'hote VPS), jamais expose publiquement.
+  pushgateway:
+    image: prom/pushgateway:v1.9.0
+    container_name: clenzy-pushgateway-prod
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9091:9091"
+    networks:
+      clenzy-network:
+        aliases:
+          - pushgateway
+
   # k6 — Load Testing
   # Niveau 8 — Scalabilite : tests de charge pour valider la performance.
   # Usage : docker compose -f docker-compose.prod.yml run --rm k6 run /scripts/load-test.js
@@ -588,6 +669,7 @@ volumes:
   prometheus-data-prod:
   grafana-data-prod:
   loki-data-prod:
+  alertmanager-data-prod:
   contact-uploads-prod:
   document-templates-prod:
   document-generated-prod:

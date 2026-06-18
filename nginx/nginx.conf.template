@@ -77,7 +77,7 @@ http {
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
-    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src 'self' https://*.${DOMAIN} https://geo.api.gouv.fr https://eu.i.posthog.com https://ipapi.co https://api.stripe.com https://open.er-api.com; frame-src 'self' blob: https://auth.${DOMAIN} https://js.stripe.com; frame-ancestors 'self' https://auth.${DOMAIN}; object-src 'self' blob:" always;
+    add_header Content-Security-Policy "default-src 'self'; media-src 'self' blob:; worker-src 'self' blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src 'self' https://*.${DOMAIN} https://geo.api.gouv.fr https://eu.i.posthog.com https://ipapi.co https://api.stripe.com https://open.er-api.com; frame-src 'self' blob: https://auth.${DOMAIN} https://js.stripe.com; frame-ancestors 'self' https://auth.${DOMAIN}; object-src 'self' blob:" always;
     add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
 
     # WebSocket : n'envoyer Connection "upgrade" que si le client le demande.
@@ -223,7 +223,7 @@ http {
         add_header X-Content-Type-Options "nosniff" always;
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
         add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src 'self' https://*.${DOMAIN} https://geo.api.gouv.fr https://eu.i.posthog.com https://ipapi.co https://api.stripe.com https://open.er-api.com; frame-src 'self' blob: https://auth.${DOMAIN} https://js.stripe.com; frame-ancestors 'self' https://auth.${DOMAIN}; object-src 'self' blob:" always;
+        add_header Content-Security-Policy "default-src 'self'; media-src 'self' blob:; worker-src 'self' blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src 'self' https://*.${DOMAIN} https://geo.api.gouv.fr https://eu.i.posthog.com https://ipapi.co https://api.stripe.com https://open.er-api.com; frame-src 'self' blob: https://auth.${DOMAIN} https://js.stripe.com; frame-ancestors 'self' https://auth.${DOMAIN}; object-src 'self' blob:" always;
         add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
 
         # SSL
@@ -252,6 +252,35 @@ http {
             proxy_connect_timeout 30s;
             proxy_send_timeout 30s;
             proxy_read_timeout 60s;
+        }
+
+        # Passerelle media go2rtc — flux caméra WebRTC (lecture à la demande).
+        # Strip du préfixe /media : go2rtc sert ses pages/API à la racine.
+        location /media/ {
+            set $go2rtc_upstream http://clenzy-go2rtc:1984;
+            # Autorisation : valide le ticket HMAC (scope au flux) avant de servir go2rtc.
+            auth_request /__media_authz;
+            rewrite ^/media/(.*)$ /$1 break;
+            proxy_pass $go2rtc_upstream;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_read_timeout 3600s;
+        }
+
+        # Autorisation interne des flux media : delegue la validation du ticket HMAC au backend.
+        # On transmet l'URI d'origine via X-Original-URI ($request_uri) : dans une sous-requete
+        # auth_request, $arg_*/$args sont VIDES, seul $request_uri porte la query d'origine.
+        location = /__media_authz {
+            internal;
+            proxy_pass http://clenzy-server:8080/api/media/verify;
+            proxy_pass_request_body off;
+            proxy_set_header Content-Length "";
+            proxy_set_header X-Original-URI $request_uri;
         }
 
         # Frontend React (PMS)
