@@ -19,6 +19,49 @@ set -e
 DC="docker compose -f docker-compose.prod.yml --env-file .env"
 
 # ===========================================
+# Observabilite deploiement (Pushgateway + Alertmanager)
+# ===========================================
+# Statut du deploiement pousse au Pushgateway (scrute par Prometheus) :
+#   - clenzy_deploy_status            (job clenzy-deploy)          : 1=OK, 0=KO du DERNIER deploy
+#   - clenzy_deploy_last_success_timestamp_seconds (job clenzy-deploy-success) : horodatage du
+#     dernier succes, dans un job SEPARE pour survivre aux pushes d'echec (regle ClenzyDeployStale).
+PUSHGATEWAY_URL="${DEPLOY_PUSHGATEWAY_URL:-http://127.0.0.1:9091}"
+
+push_metric() { # $1=job  $2=corps-metrics
+  printf '%s\n' "$2" \
+    | curl -fsS --max-time 5 --data-binary @- "${PUSHGATEWAY_URL}/metrics/job/$1" >/dev/null 2>&1 \
+    && return 0 || return 1
+}
+
+on_exit() {
+  local rc=$?
+  if [ "$rc" -eq 0 ]; then
+    if push_metric clenzy-deploy "clenzy_deploy_status 1" \
+       && push_metric clenzy-deploy-success "clenzy_deploy_last_success_timestamp_seconds $(date +%s)"; then
+      echo "   📈 Statut deploiement pousse au Pushgateway (succes)."
+    fi
+  else
+    push_metric clenzy-deploy "clenzy_deploy_status 0" \
+      && echo "   📈 Statut deploiement pousse au Pushgateway (echec)." || true
+  fi
+}
+trap on_exit EXIT
+
+# Token partage Alertmanager -> app (credentials_file lu par Alertmanager). Ecrit depuis
+# l'env (.env charge par cd-deploy) ; jamais commite. Memo valeur que CLENZY_OPS_ALERT_TOKEN
+# cote pms-server et le secret GitHub OPS_ALERT_TOKEN.
+# On ecrit TOUJOURS le fichier (vide si token absent) : Alertmanager refuse de demarrer
+# si son credentials_file est introuvable. Vide -> l'app rejette (fail-closed), mais le
+# conteneur tourne au lieu de crash-looper.
+mkdir -p monitoring/alertmanager
+( umask 077; printf '%s' "${CLENZY_OPS_ALERT_TOKEN:-}" > monitoring/alertmanager/ops_token )
+if [ -n "${CLENZY_OPS_ALERT_TOKEN:-}" ]; then
+  echo "🔐 Token Alertmanager provisionne (monitoring/alertmanager/ops_token)."
+else
+  echo "⚠️  CLENZY_OPS_ALERT_TOKEN absent : fichier token vide ecrit (Alertmanager ne pourra pas notifier l'app)."
+fi
+
+# ===========================================
 # 0. Pre-flight checks
 # ===========================================
 

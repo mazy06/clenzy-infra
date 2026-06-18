@@ -431,6 +431,9 @@ services:
       SPRING_KAFKA_BOOTSTRAP_SERVERS: clenzy-kafka:9092
       # Jasypt (chiffrement tokens Airbnb en base)
       JASYPT_ENCRYPTOR_PASSWORD: ${JASYPT_ENCRYPTOR_PASSWORD}
+      # Token partage des alertes ops (POST /api/ops/alerts) -> clenzy.ops.alert-token.
+      # Meme valeur que le secret GitHub OPS_ALERT_TOKEN et le credentials_file Alertmanager.
+      CLENZY_OPS_ALERT_TOKEN: ${CLENZY_OPS_ALERT_TOKEN:-}
       # EncryptedFieldConverter (audit Z1-SEC-08) : soupape transitoire. Le converter
       # passe en mode strict (echec de dechiffrement = FieldDecryptionException) ; tant
       # que d'eventuelles lignes legacy en clair ne sont pas backfillees, false sert la
@@ -524,6 +527,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/rules:/etc/prometheus/rules:ro
       - prometheus-data-prod:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -579,6 +583,39 @@ services:
         aliases:
           - loki
 
+  # Alertmanager — Routage des alertes Prometheus vers la notif in-app
+  # (webhook -> POST /api/ops/alerts/alertmanager). Interne (non expose).
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: clenzy-alertmanager-prod
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/alertmanager:/etc/alertmanager:ro
+      - alertmanager-data-prod:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    expose:
+      - "9093"
+    depends_on:
+      pms-server:
+        condition: service_started
+    networks:
+      - clenzy-network
+
+  # Pushgateway — recoit le statut de deploiement pousse par scripts/deploy.sh.
+  # Bind localhost uniquement (le script tourne sur l'hote VPS), jamais expose publiquement.
+  pushgateway:
+    image: prom/pushgateway:v1.9.0
+    container_name: clenzy-pushgateway-prod
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9091:9091"
+    networks:
+      clenzy-network:
+        aliases:
+          - pushgateway
+
   # k6 — Load Testing
   # Niveau 8 — Scalabilite : tests de charge pour valider la performance.
   # Usage : docker compose -f docker-compose.prod.yml run --rm k6 run /scripts/load-test.js
@@ -624,6 +661,7 @@ volumes:
   prometheus-data-prod:
   grafana-data-prod:
   loki-data-prod:
+  alertmanager-data-prod:
   contact-uploads-prod:
   document-templates-prod:
   document-generated-prod:
