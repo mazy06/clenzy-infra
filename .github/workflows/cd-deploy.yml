@@ -175,3 +175,32 @@ jobs:
             export DEPLOY_MODE DEPLOY_SERVICES
             chmod +x scripts/deploy.sh
             bash scripts/deploy.sh
+
+      # Notifie l'app (notification in-app pour le staff plateforme) si le deploiement
+      # echoue — y compris quand l'echec survient AVANT/PENDANT le SSH (auth/connexion VPS),
+      # cas ou deploy.sh ne tourne jamais et ne peut pas pousser de metrique. Best-effort.
+      - name: Notifier l'app en cas d'echec de deploiement
+        if: failure()
+        env:
+          OPS_ALERT_TOKEN: ${{ secrets.OPS_ALERT_TOKEN }}
+          OPS_ALERT_URL: ${{ vars.OPS_ALERT_URL || 'https://app.clenzy.fr/api/ops/alerts' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -e
+          if [ -z "$OPS_ALERT_TOKEN" ]; then
+            echo "OPS_ALERT_TOKEN absent — notification in-app ignoree."
+            exit 0
+          fi
+          MSG="Le workflow CD Deploy a echoue (run #${RUN_NUMBER}). Verifier l'auth/connexion VPS et les logs du run."
+          PAYLOAD="$(jq -nc \
+            --arg t "Deploiement prod echoue" \
+            --arg m "$MSG" \
+            --arg l "$RUN_URL" \
+            '{severity:"critical",source:"cd-deploy",title:$t,message:$m,link:$l}')"
+          curl -fsS --max-time 15 -X POST "$OPS_ALERT_URL" \
+            -H "Content-Type: application/json" \
+            -H "X-Ops-Token: ${OPS_ALERT_TOKEN}" \
+            --data "$PAYLOAD" \
+            && echo "Notification in-app envoyee." \
+            || echo "Notification in-app KO (best-effort, on n'echoue pas le job pour autant)."

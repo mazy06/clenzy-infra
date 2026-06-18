@@ -1,0 +1,54 @@
+# ===========================================
+# Clenzy — Regles d'alerte Prometheus
+# ===========================================
+# Routees vers Alertmanager -> webhook -> POST /api/ops/alerts/alertmanager
+# -> notification in-app pour le staff plateforme.
+#
+# Metriques deploiement (clenzy_deploy_*) : poussees par scripts/deploy.sh vers
+# le Pushgateway (job=clenzy-deploy). Metriques applicatives : /actuator/prometheus.
+
+groups:
+  - name: clenzy-deploy
+    rules:
+      # Le dernier deploiement a echoue (statut pousse par deploy.sh).
+      - alert: ClenzyDeployFailed
+        expr: clenzy_deploy_status == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Deploiement prod en echec"
+          description: "Le dernier deploiement (job clenzy-deploy) a echoue. Verifier le run CD Deploy."
+
+      # Aucun deploiement reussi depuis > 3 jours : capte un CD Deploy casse en
+      # silence (incident 2026-06 : auth git VPS expiree, backend fige plusieurs jours).
+      - alert: ClenzyDeployStale
+        expr: (time() - clenzy_deploy_last_success_timestamp_seconds) > 259200
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Aucun deploiement reussi depuis plus de 3 jours"
+          description: "Le dernier deploiement reussi remonte a plus de 72h. CD Deploy probablement casse (auth/connexion ?)."
+
+  - name: clenzy-health
+    rules:
+      # Backend injoignable par Prometheus (scrape down).
+      - alert: ClenzyBackendDown
+        expr: up{job="clenzy-backend"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Backend Clenzy injoignable"
+          description: "Prometheus ne scrape plus clenzy-backend (/actuator/prometheus) depuis 5 min."
+
+      # Pics d'echecs de generation de documents (symptome : devis/factures en echec).
+      - alert: ClenzyDocGenFailures
+        expr: increase(clenzy_documents_generation_failure_total[15m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Echecs de generation de documents"
+          description: "{{ $value | printf \"%.0f\" }} echec(s) de generation de document sur les 15 dernieres minutes."

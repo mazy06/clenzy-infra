@@ -7,7 +7,26 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
+# Routage des alertes vers Alertmanager (absent en dev -> simplement injoignable, sans effet).
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+# Regles d'alerte (deploiement, sante backend, echecs doc-gen).
+rule_files:
+  - '/etc/prometheus/rules/*.yml'
+
 scrape_configs:
+  # Pushgateway — statut de deploiement pousse par deploy.sh (absent en dev).
+  - job_name: 'pushgateway'
+    honor_labels: true
+    static_configs:
+      - targets: ['pushgateway:9091']
+        labels:
+          app: 'clenzy'
+          component: 'deploy'
+
   # Backend Spring Boot (Actuator + Micrometer)
   - job_name: 'clenzy-backend'
     metrics_path: '/actuator/prometheus'
