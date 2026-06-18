@@ -109,7 +109,30 @@ if [ -d "$CLENZY_APP_DIR/.git" ]; then
     echo "      Si git reset echoue, configurer NOPASSWD pour l'utilisateur de deploiement."
   fi
 
-  git fetch origin production
+  # Authentifier le fetch via un token injecte par le workflow CD (secret GitHub Actions,
+  # rotatable de maniere centralisee) plutot qu'un PAT longue-duree fige dans l'URL du remote
+  # sur le VPS. Incident 2026-06 : ce PAT a expire -> tous les CD Deploy echouaient sur
+  # "Authentication failed for github.com/<owner>/clenzy.git", le backend restait bloque sur une
+  # ancienne image et la generation des devis tombait en echec.
+  # Token : DEPLOY_APP_GIT_TOKEN (secret CLENZY_APP_GIT_TOKEN) si fourni, sinon repli sur
+  # DEPLOY_GHCR_TOKEN (deja valide, utilise pour ghcr.io).
+  APP_REPO_SLUG="${DEPLOY_APP_REPO:-${DEPLOY_GHCR_OWNER:-mazy06}/clenzy}"
+  APP_REPO_URL="https://github.com/${APP_REPO_SLUG}.git"
+  APP_GIT_TOKEN="${DEPLOY_APP_GIT_TOKEN:-${DEPLOY_GHCR_TOKEN:-}}"
+  if [ -n "$APP_GIT_TOKEN" ]; then
+    git remote set-url origin "https://x-access-token:${APP_GIT_TOKEN}@github.com/${APP_REPO_SLUG}.git"
+  fi
+
+  fetch_rc=0
+  git fetch origin production || fetch_rc=$?
+  # Toujours restaurer une URL sans secret (ne pas laisser le token en clair dans .git/config sur le VPS)
+  git remote set-url origin "$APP_REPO_URL"
+  if [ "$fetch_rc" -ne 0 ]; then
+    echo "❌ Echec du fetch du repo applicatif clenzy (token d'authentification invalide ou expire ?)."
+    echo "   Verifier le secret CLENZY_APP_GIT_TOKEN (ou le scope repo de GHCR_TOKEN)."
+    exit 1
+  fi
+
   git checkout production 2>/dev/null || git checkout -b production origin/production
   git reset --hard origin/production
   # Nettoyer les fichiers non suivis (hors gitignore) — evite les conflits au prochain pull
