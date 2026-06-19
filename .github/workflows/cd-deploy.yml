@@ -49,6 +49,14 @@ on:
         required: false
         default: ''
         type: string
+      force_recreate:
+        description: 'Force-recreate les services cibles (re-attache reseau + connexion fraiche)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
   repository_dispatch:
     types:
       - deploy-landingpage
@@ -110,12 +118,13 @@ jobs:
           DEPLOY_FORCE_ENV: ${{ github.event.client_payload.force_env_sync || github.event.inputs.force_env_sync || 'false' }}
           DEPLOY_MODE: ${{ github.event.client_payload.deploy_mode || github.event.inputs.deploy_mode || 'update' }}
           DEPLOY_SERVICES: ${{ github.event.client_payload.services || github.event.client_payload.service || github.event.inputs.services || '' }}
+          DEPLOY_FORCE_RECREATE: ${{ github.event.client_payload.force_recreate || github.event.inputs.force_recreate || 'false' }}
         with:
           host: ${{ secrets.VPS_HOST != '' && secrets.VPS_HOST || vars.VPS_HOST }}
           username: ${{ secrets.VPS_USER != '' && secrets.VPS_USER || vars.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT || 22 }}
-          envs: DEPLOY_INFRA_DIR,DEPLOY_REPO,DEPLOY_GHCR_OWNER,DEPLOY_GHCR_TOKEN,DEPLOY_GIT_TOKEN,DEPLOY_APP_GIT_TOKEN,DEPLOY_ENV_B64,DEPLOY_FORCE_ENV,DEPLOY_MODE,DEPLOY_SERVICES
+          envs: DEPLOY_INFRA_DIR,DEPLOY_REPO,DEPLOY_GHCR_OWNER,DEPLOY_GHCR_TOKEN,DEPLOY_GIT_TOKEN,DEPLOY_APP_GIT_TOKEN,DEPLOY_ENV_B64,DEPLOY_FORCE_ENV,DEPLOY_MODE,DEPLOY_SERVICES,DEPLOY_FORCE_RECREATE
           command_timeout: 60m
           script: |
             set -e
