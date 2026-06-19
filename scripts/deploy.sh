@@ -206,6 +206,16 @@ fi
 
 SERVICES_LIST=$(echo "${DEPLOY_SERVICES}" | tr ',' ' ')
 
+# Force-recreate optionnel (input DEPLOY_FORCE_RECREATE) pour le deploiement cible de
+# services : recree le conteneur meme sans changement d'image/config (re-attache au
+# reseau courant, repart sur une connexion fraiche). Utile pour reparer un conteneur
+# orphelin (ex. postgres-exporter jamais re-scrape apres ajout de prometheus).
+RECREATE_FLAG=""
+if [ "${DEPLOY_FORCE_RECREATE:-false}" = "true" ]; then
+  RECREATE_FLAG="--force-recreate"
+  echo "♻️  Force-recreate active pour le deploiement cible."
+fi
+
 wait_pg() {
   local label="$1"
   local attempt=0
@@ -256,7 +266,7 @@ else
   if [ -n "$SERVICES_LIST" ]; then
     echo "📦 Mise a jour des services : $SERVICES_LIST"
     $DC pull $SERVICES_LIST
-    $DC up -d $SERVICES_LIST
+    $DC up -d $RECREATE_FLAG $SERVICES_LIST
     HEALTH_SERVICES="$SERVICES_LIST"
   else
     echo "📦 Mise a jour de tous les services..."
