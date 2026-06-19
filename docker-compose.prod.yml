@@ -195,10 +195,10 @@ services:
     restart: unless-stopped
     environment:
       DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable"
-    volumes:
-      - ./postgres/postgres-exporter-queries.yml:/etc/postgres-exporter/queries.yml:ro
+    # NB : on s'appuie sur les collectors INTEGRES de v0.15.0 (pg_stat_database, locks,
+    # connexions, taille DB, replication). L'ancien --extend.query-path (queries.yml) est
+    # DEPRECATED en v0.15.0 et faisait renvoyer HTTP 500 a /metrics -> up=0 (incident 2026-06).
     command:
-      - '--extend.query-path=/etc/postgres-exporter/queries.yml'
       - '--web.listen-address=:9187'
     expose:
       - "9187"
