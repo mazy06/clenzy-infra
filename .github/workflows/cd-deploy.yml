@@ -66,6 +66,17 @@ on:
 
 permissions:
   contents: read
+
+# Serialise les deploiements : deux declenchements quasi-simultanes (push sur production +
+# repository_dispatch deploy-clenzy-backend du CI clenzy) tournaient EN PARALLELE sur le meme
+# VPS et se marchaient dessus (l'un recreait un conteneur pendant que l'autre referencait
+# l'ancien ID -> « No such container » -> echec). cancel-in-progress: false => file d'attente
+# (le 2e attend la fin du 1er) ; NE JAMAIS passer a true (annuler un deploy en cours peut
+# laisser la prod incoherente). Observe 3 echecs les 2026-06-18/19.
+concurrency:
+  group: cd-deploy-production
+  cancel-in-progress: false
+
 jobs:
   deploy:
     name: Deploy Infrastructure
