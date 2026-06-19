@@ -15,6 +15,16 @@ on:
         required: true
         default: '300'
         type: string
+      service:
+        description: 'Service compose a diagnostiquer'
+        required: false
+        default: 'pms-server'
+        type: string
+      container:
+        description: 'Nom du container Docker (docker inspect)'
+        required: false
+        default: 'clenzy-server-prod'
+        type: string
 
 permissions:
   contents: read
@@ -31,12 +41,14 @@ jobs:
         env:
           INFRA_DIR_VALUE: ${{ vars.VPS_INFRA_DIR }}
           TAIL: ${{ inputs.tail }}
+          SVC: ${{ inputs.service || 'pms-server' }}
+          CTR: ${{ inputs.container || 'clenzy-server-prod' }}
         with:
           host: ${{ secrets.VPS_HOST != '' && secrets.VPS_HOST || vars.VPS_HOST }}
           username: ${{ secrets.VPS_USER != '' && secrets.VPS_USER || vars.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT || 22 }}
-          envs: INFRA_DIR_VALUE,TAIL
+          envs: INFRA_DIR_VALUE,TAIL,SVC,CTR
           command_timeout: 5m
           script: |
             set -e
@@ -44,23 +56,23 @@ jobs:
             DC="docker compose -f $INFRA_DIR/docker-compose.prod.yml --env-file $INFRA_DIR/.env"
 
             echo "=========================================="
-            echo "Etat du container pms-server"
+            echo "Etat du container $SVC ($CTR)"
             echo "=========================================="
-            $DC ps pms-server || true
+            $DC ps "$SVC" || true
             echo ""
             echo "Status detaille (docker inspect) :"
-            docker inspect clenzy-server-prod --format '{{.State.Status}} | restarting={{.State.Restarting}} | exitcode={{.State.ExitCode}} | startedAt={{.State.StartedAt}} | finishedAt={{.State.FinishedAt}} | restarts={{.RestartCount}}' 2>/dev/null || echo "container introuvable"
+            docker inspect "$CTR" --format '{{.State.Status}} | restarting={{.State.Restarting}} | exitcode={{.State.ExitCode}} | startedAt={{.State.StartedAt}} | finishedAt={{.State.FinishedAt}} | restarts={{.RestartCount}}' 2>/dev/null || echo "container introuvable"
 
             echo ""
             echo "=========================================="
-            echo "Derniers $TAIL logs pms-server"
+            echo "Derniers $TAIL logs $SVC"
             echo "=========================================="
-            $DC logs --tail="$TAIL" --no-color pms-server 2>&1 || true
+            $DC logs --tail="$TAIL" --no-color "$SVC" 2>&1 || true
 
             echo ""
             echo "=========================================="
-            echo "Filtre erreurs Spring/Liquibase"
+            echo "Filtre erreurs"
             echo "=========================================="
-            $DC logs --tail="$TAIL" --no-color pms-server 2>&1 \
-              | grep -iE "error|caused by|exception|failed|liquibase|validation|column|schema|migration" \
+            $DC logs --tail="$TAIL" --no-color "$SVC" 2>&1 \
+              | grep -iE "error|caused by|exception|failed|refused|auth|password|connect|liquibase|validation|column|schema|migration" \
               | tail -50 || echo "(aucun match)"
