@@ -29,3 +29,13 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Repos tiers clonés localement pour le dev (ex. relais WhatsApp OpenWA) — cf. docs.
+# Ont leur propre .git ; à cloner à part, pas à versionner ici.
+openwa/
+
+# Artefacts de scan de sécurité (Shannon pentest) — générés, non versionnés.
+app-clenzy-fr_shannon-*/
+
+# PDFs (livrables gardés en local, hors git pour éviter le bloat binaire).
+*.pdf
