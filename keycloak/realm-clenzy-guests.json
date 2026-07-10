@@ -1,0 +1,75 @@
+{
+  "realm": "clenzy-guests",
+  "enabled": true,
+  "registrationAllowed": false,
+  "resetPasswordAllowed": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "verifyEmail": false,
+  "sslRequired": "none",
+  "accessTokenLifespan": 7200,
+  "ssoSessionIdleTimeout": 86400,
+  "ssoSessionMaxLifespan": 604800,
+  "offlineSessionIdleTimeout": 2592000,
+  "roles": {
+    "realm": [
+      {
+        "name": "BOOKING_GUEST",
+        "description": "Guest user of a booking engine"
+      }
+    ]
+  },
+  "defaultRoles": ["BOOKING_GUEST"],
+  "clients": [
+    {
+      "clientId": "booking-engine-client",
+      "name": "Clenzy Booking Engine Client",
+      "enabled": true,
+      "publicClient": true,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["*"],
+      "webOrigins": ["*"],
+      "fullScopeAllowed": true,
+      "protocol": "openid-connect",
+      "attributes": {
+        "access.token.lifespan": "7200",
+        "client.offline.session.idle.timeout": "2592000"
+      },
+      "protocolMappers": [
+        {
+          "name": "org_ids",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "org_ids",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "org_ids",
+            "jsonType.label": "String",
+            "multivalued": "true"
+          }
+        },
+        {
+          "name": "guest-type",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "user_type",
+            "claim.value": "guest",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": []
+}

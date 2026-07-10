@@ -1,0 +1,30 @@
+# ==========================================================================
+# Clenzy Sites (SSR) — override DEV. Inclus par start-dev.sh si ../clenzy-sites est présent.
+# Usage : docker compose -f docker-compose.dev.yml -f docker-compose.sites.dev.yml --env-file .env.dev up -d
+# HMR : code source monté en volume + WATCHPACK_POLLING (Next watch dans Docker).
+# ==========================================================================
+services:
+  clenzy-sites:
+    build:
+      context: ../clenzy-sites
+      dockerfile: Dockerfile.dev
+    container_name: clenzy-sites-dev
+    ports:
+      - "3002:3000"
+    environment:
+      - CLENZY_API_BASE_URL=http://clenzy-server:8080
+      - CLENZY_SITES_BASE_DOMAIN=clenzy.site
+      - NEXT_PUBLIC_WIDGET_BASE_URL=http://localhost:8084
+      - WATCHPACK_POLLING=true
+      - NODE_ENV=development
+    volumes:
+      - ../clenzy-sites:/app
+      # Volume nommé : préserve les node_modules Linux du container (cf. pms-client).
+      - sites-node-modules-dev:/app/node_modules
+    networks:
+      clenzy-network:
+        aliases:
+          - clenzy-sites
+
+volumes:
+  sites-node-modules-dev:

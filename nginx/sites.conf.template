@@ -1,0 +1,48 @@
+# ==========================================================================
+# Vhost « Clenzy Sites » (SSR) — à FUSIONNER dans nginx.conf.template (dans le bloc http {})
+# quand Cloudflare for SaaS est configuré. NE PAS inclure tel quel sans cert origin valide.
+#
+# Architecture : Cloudflare for SaaS termine le TLS (wildcard *.clenzy.site + Custom Hostnames)
+# et forwarde au FALLBACK ORIGIN (ce nginx) en préservant le Host du visiteur. Ce bloc capte donc
+# tout hôte non-clenzy.fr (default_server) et le route vers le service SSR.
+#
+# Pré-requis avant activation :
+#   1. Service clenzy-sites lancé (docker-compose.sites.yml).
+#   2. Certificat origin posé (Cloudflare Origin CA recommandé) dans nginx/ssl/.
+#   3. Un seul `default_server` par port 443 dans la config finale.
+# ==========================================================================
+
+upstream clenzy_sites {
+    server clenzy-sites:3000;
+    keepalive 32;
+}
+
+server {
+    # Capte les hôtes de sites (sous-domaines + domaines custom) forwardés par Cloudflare.
+    listen 443 ssl default_server;
+    http2 on;
+    server_name _;
+
+    # Certificat ORIGIN (Cloudflare Origin CA) — couvre le fallback origin, pas par hostname client
+    # (le TLS public est géré par Cloudflare for SaaS).
+    ssl_certificate     /etc/nginx/ssl/cloudflare-origin.crt;
+    ssl_certificate_key /etc/nginx/ssl/cloudflare-origin.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384;
+    ssl_session_cache shared:SSL:10m;
+
+    # Optionnel : n'accepter que le trafic venant de Cloudflare (authenticated origin pulls
+    # ou allowlist des IP ranges Cloudflare) pour empêcher l'accès direct à l'origin.
+
+    location / {
+        proxy_pass http://clenzy_sites;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;                       # Host du visiteur (résolution du site)
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}

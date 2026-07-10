@@ -244,6 +244,10 @@ services:
       SPRING_KAFKA_BOOTSTRAP_SERVERS: clenzy-kafka:9092
       # Jasypt
       JASYPT_ENCRYPTOR_PASSWORD: ${JASYPT_ENCRYPTOR_PASSWORD}
+      # Channex (Channel Manager — distribution OTAs)
+      CHANNEX_BASE_URL: ${CHANNEX_BASE_URL:-https://staging.channex.io/api/v1}
+      CHANNEX_API_KEY: ${CHANNEX_API_KEY:-}
+      CHANNEX_WEBHOOK_SECRET: ${CHANNEX_WEBHOOK_SECRET:-}
       # Mail SMTP (envoi via Brevo)
       MAIL_HOST: ${MAIL_HOST:-smtp-relay.brevo.com}
       MAIL_PORT: ${MAIL_PORT:-587}

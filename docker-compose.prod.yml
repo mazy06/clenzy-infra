@@ -336,6 +336,27 @@ services:
           - clenzy-libreoffice
 
   # ==========================================
+  # go2rtc — passerelle media cameras (RTSP -> WebRTC)
+  # ==========================================
+  go2rtc:
+    image: alexxit/go2rtc:1.9.4
+    container_name: clenzy-go2rtc-prod
+    restart: unless-stopped
+    ports:
+      - "8555:8555/tcp"    # WebRTC media (ICE direct, hors nginx)
+      - "8555:8555/udp"
+    volumes:
+      - ./go2rtc/go2rtc.yaml:/config/go2rtc.yaml:ro
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    networks:
+      clenzy-network:
+        aliases:
+          - clenzy-go2rtc
+
+  # ==========================================
   # PMS (Application métier)
   # ==========================================
 
@@ -480,6 +501,40 @@ services:
       clenzy-network:
         aliases:
           - clenzy-frontend
+
+  # ==========================================
+  # COPILOT RUNTIME (Node) — routeur AG-UI CopilotKit → backend Java
+  # ==========================================
+  # Service mince : nginx route /api/copilotkit → ce service (alias reseau
+  # `copilot-runtime`), qui relaie en SSE vers clenzy-server:8080/api/agui/run
+  # (moteur multi-agent). Sans ce service, la page /agui-spike casse en prod.
+  # MIRROR de pms-server : image GHCR taggee :latest (poussee par la CI clenzy
+  # sur push production) + build local (full-rebuild). Pas de port publie : seul
+  # nginx l'atteint sur le reseau interne.
+  copilot-runtime:
+    image: ghcr.io/mazy06/clenzy-copilot-runtime:latest
+    build:
+      context: ../clenzy/copilot-runtime
+      dockerfile: Dockerfile
+    container_name: clenzy-copilot-runtime-prod
+    restart: unless-stopped
+    environment:
+      PORT: 8080
+      # Origine autorisee (CORS). En prod le front est servi en MEME ORIGINE
+      # via nginx (/api/copilotkit) → cookie HttpOnly clenzy_auth transmis sans
+      # CORS. On garde l'en-tete coherent malgre tout.
+      COPILOT_ALLOWED_ORIGIN: https://${APP_DOMAIN}
+      # URL interne du backend Java (DNS Docker, alias reseau `clenzy-server`).
+      AGUI_BACKEND_URL: http://clenzy-server:8080/api/agui/run
+    expose:
+      - "8080"
+    depends_on:
+      pms-server:
+        condition: service_started
+    networks:
+      clenzy-network:
+        aliases:
+          - copilot-runtime
 
   # ==========================================
   # MONITORING (Prometheus + Grafana)

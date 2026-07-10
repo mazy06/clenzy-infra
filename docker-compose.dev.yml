@@ -43,9 +43,9 @@ services:
   # INFRASTRUCTURE (BDD, Cache, Auth)
   # ==========================================
 
-  # Base de données PostgreSQL
+  # Base de données PostgreSQL (pgvector requis pour la RAG knowledge base — table kb_chunk, migration 0143)
   postgres:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15
     container_name: clenzy-postgres-dev
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
@@ -250,6 +250,28 @@ services:
           - clenzy-libreoffice
 
   # ==========================================
+  # go2rtc — passerelle media cameras (RTSP -> WebRTC)
+  # ==========================================
+  go2rtc:
+    image: alexxit/go2rtc:1.9.4
+    container_name: clenzy-go2rtc-dev
+    restart: unless-stopped
+    ports:
+      - "1984:1984"        # API / lecture WebRTC (HTTP)
+      - "8555:8555/tcp"    # WebRTC media (ICE)
+      - "8555:8555/udp"
+    volumes:
+      - ./go2rtc/go2rtc.yaml:/config/go2rtc.yaml:ro
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    networks:
+      clenzy-network:
+        aliases:
+          - clenzy-go2rtc
+
+  # ==========================================
   # PMS (Application métier)
   # ==========================================
 
@@ -294,10 +316,27 @@ services:
       FRONTEND_URL: http://localhost:3000
       # Mapbox (carte dans les emails check-in)
       MAPBOX_ACCESS_TOKEN: ${MAPBOX_ACCESS_TOKEN:-}
+      # Channex (channel manager) — staging par defaut. api-key depuis .env ;
+      # webhook-callback-url/public-media-base-url : uniquement si tunnel public
+      # (ngrok/cloudflared) — vides en dev local = auto-registration/push photos skip.
+      CHANNEX_API_KEY: ${CHANNEX_API_KEY:-}
+      CHANNEX_WEBHOOK_SECRET: ${CHANNEX_WEBHOOK_SECRET:-}
+      CHANNEX_WEBHOOK_CALLBACK_URL: ${CHANNEX_WEBHOOK_CALLBACK_URL:-}
+      CHANNEX_PUBLIC_MEDIA_BASE_URL: ${CHANNEX_PUBLIC_MEDIA_BASE_URL:-}
+      # DEV/STAGING : autorise le push ARI sans OTA actif (certification Channex).
+      # Jamais true en prod (le compose prod ne definit pas cette variable).
+      CHANNEX_ALLOW_PUSH_WITHOUT_ACTIVE_OTA: ${CHANNEX_ALLOW_PUSH_WITHOUT_ACTIVE_OTA:-true}
       # Jasypt (chiffrement tokens Airbnb en base)
       JASYPT_ENCRYPTOR_PASSWORD: ${JASYPT_ENCRYPTOR_PASSWORD:-dev-jasypt-secret-key}
       # JaCoCo — chemin vers le rapport monte en volume
       CLENZY_JACOCO_REPORT_PATH: /app/jacoco/jacoco.xml
+      # WhatsApp OpenWA (test relais) — instance lancee separement (cf. openwa/).
+      # base-url via host.docker.internal car OpenWA expose 127.0.0.1:2785 sur l'hote (Docker Desktop Mac).
+      # La master key OpenWA est stockee CHIFFREE EN BDD (saisie depuis l'UI), plus en env.
+      CLENZY_WHATSAPP_OPENWA_BASE_URL: http://host.docker.internal:2785
+      # URL que OpenWA appelle pour le relais ENTRANT (guest -> host). pms-server expose
+      # 8084 sur l'hote, joignable depuis le container OpenWA via host.docker.internal.
+      CLENZY_WHATSAPP_OPENWA_WEBHOOK_URL: http://host.docker.internal:8084/api/webhooks/whatsapp/openwa
     ports:
       - "8084:8080"
     depends_on:
@@ -342,16 +381,52 @@ services:
       - VITE_APP_NAME=Clenzy
       - VITE_APP_VERSION=1.0.0
       - VITE_STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}
+      # Runtime CopilotKit : servi en MÊME ORIGINE via le proxy Vite
+      # (/api/copilotkit → service copilot-runtime) pour que le cookie HttpOnly
+      # clenzy_auth soit transmis. Cf. vite.config.ts server.proxy.
+      - VITE_COPILOT_RUNTIME_URL=/api/copilotkit
     volumes:
       # Code source live-mounted depuis l'hote
       - ../clenzy/client:/app
-      # Volume anonyme : preserve les node_modules du container (binaires Linux)
-      # et empeche les node_modules locaux (macOS) de les ecraser
-      - /app/node_modules
+      # Volume NOMME : preserve les node_modules du container (binaires Linux)
+      # et empeche les node_modules locaux (macOS) de les ecraser.
+      # Nomme (et non anonyme) pour etre REUTILISE a chaque recreation du container.
+      # Un volume anonyme en recreait un de ~460 MB a chaque `up`, d'ou une fuite disque
+      # (la VM Docker s'etait remplie de dizaines de node_modules orphelins).
+      # Apres un changement de dependances :
+      #   docker volume rm clenzy-infra_frontend-node-modules-dev && docker compose -f docker-compose.dev.yml up --build
+      - frontend-node-modules-dev:/app/node_modules
     networks:
       clenzy-network:
         aliases:
           - clenzy-frontend
+
+  # ==========================================
+  # COPILOT RUNTIME (Node) — routeur AG-UI CopilotKit → backend Java
+  # ==========================================
+  # Service mince : expose /api/copilotkit au front et relaie vers
+  # clenzy-server:8080/api/agui/run (moteur multi-agent). Deps installées
+  # dans son Dockerfile (npm install), donc lancé par start-dev.sh sans étape
+  # manuelle. PHASE 0 : server.mjs est un stub tant que le handler CopilotKit
+  # réel n'est pas branché.
+  copilot-runtime:
+    build:
+      context: ../clenzy/copilot-runtime
+      dockerfile: Dockerfile.dev
+    container_name: clenzy-copilot-runtime-dev
+    ports:
+      - "8087:8080"
+    environment:
+      - PORT=8080
+      - COPILOT_ALLOWED_ORIGIN=http://localhost:3000
+      - AGUI_BACKEND_URL=http://clenzy-server:8080/api/agui/run
+    depends_on:
+      pms-server:
+        condition: service_started
+    networks:
+      clenzy-network:
+        aliases:
+          - copilot-runtime
 
   # ==========================================
   # MONITORING (Prometheus + Grafana)
@@ -480,6 +555,7 @@ volumes:
   prometheus-data-dev:
   grafana-data-dev:
   loki-data-dev:
+  frontend-node-modules-dev:
 
 networks:
   clenzy-network:

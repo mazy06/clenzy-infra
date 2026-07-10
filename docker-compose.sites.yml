@@ -1,0 +1,26 @@
+# ==========================================================================
+# Clenzy Sites (SSR) — override ADDITIF (P1.1 c).
+# Usage : docker compose -f docker-compose.prod.yml -f docker-compose.sites.yml up -d --build clenzy-sites
+# Prérequis : le repo ../clenzy-sites doit être présent sur l'hôte (build context).
+# Fichier séparé volontaire : ne pas muter docker-compose.prod.yml tant que Cloudflare for SaaS
+# n'est pas configuré (cf. CLENZY-SITES-DEPLOY.md).
+# ==========================================================================
+services:
+  clenzy-sites:
+    image: ghcr.io/mazy06/clenzy-sites:latest
+    build:
+      context: ../clenzy-sites
+      dockerfile: Dockerfile
+    container_name: clenzy-sites-prod
+    restart: unless-stopped
+    environment:
+      CLENZY_API_BASE_URL: http://clenzy-server:8080
+      CLENZY_SITES_BASE_DOMAIN: ${SITES_BASE_DOMAIN:-clenzy.site}
+      NEXT_PUBLIC_WIDGET_BASE_URL: https://${APP_DOMAIN:-app.clenzy.fr}
+      NODE_ENV: production
+    expose:
+      - "3000"
+    networks:
+      clenzy-network:
+        aliases:
+          - clenzy-sites

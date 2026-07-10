@@ -33,14 +33,24 @@ if [ ! -d "../clenzy" ]; then
     exit 1
 fi
 
+# clenzy-sites (service SSR « Clenzy Sites ») — OPTIONNEL : inclus seulement si le repo voisin
+# est présent (le projet peut tourner sans). Ajoute l'override docker-compose dédié.
+SITES_FILES=""
+if [ -d "../clenzy-sites" ]; then
+    SITES_FILES="-f docker-compose.sites.dev.yml"
+fi
+
 echo "📦 Projets détectés :"
 echo "   - Landing Page : ../clenzy-landingpage"
 echo "   - PMS          : ../clenzy"
+if [ -n "$SITES_FILES" ]; then
+    echo "   - Sites SSR    : ../clenzy-sites"
+fi
 echo ""
 
 # Arrêter les services existants proprement
 echo "🛑 Arrêt des services existants..."
-docker compose -f docker-compose.dev.yml --env-file .env.dev down --remove-orphans 2>/dev/null || true
+docker compose -f docker-compose.dev.yml $SITES_FILES --env-file .env.dev down --remove-orphans 2>/dev/null || true
 
 # ─── Nettoyage Docker pour éviter ENOSPC (no space left on device) ───────
 echo "🧹 Nettoyage Docker (images orphelines, caches build, containers arrêtés)..."
@@ -53,11 +63,15 @@ echo ""
 
 # Forcer le rebuild du frontend et du backend sans cache (pour toujours inclure les derniers changements)
 echo "🔨 Reconstruction du frontend et du backend (sans cache)..."
-docker compose -f docker-compose.dev.yml --env-file .env.dev build --no-cache pms-client pms-server
+docker compose -f docker-compose.dev.yml --env-file .env.dev build --no-cache pms-client pms-server copilot-runtime
 
 # Démarrage de tous les services
-echo "🐳 Démarrage des conteneurs..."
-docker compose -f docker-compose.dev.yml --env-file .env.dev up -d
+# --build : reconstruit toute image dont la source a changé. Indispensable pour « landing »
+# (build statique Vite→nginx) : sans ça, `up -d` réutilise l'ancienne image figée et on
+# garde l'ancien design même après un git pull. La couche `COPY . .` du Dockerfile casse
+# le cache dès qu'un fichier source change, donc le rebuild est rapide quand rien n'a bougé.
+echo "🐳 Démarrage des conteneurs (rebuild des images dont la source a changé)..."
+docker compose -f docker-compose.dev.yml $SITES_FILES --env-file .env.dev up -d --build
 
 # Attendre que les services soient prêts
 echo "⏳ Attente du démarrage des services..."
@@ -66,7 +80,7 @@ sleep 10
 # Vérifier le statut des services
 echo ""
 echo "📊 Statut des services :"
-docker compose -f docker-compose.dev.yml --env-file .env.dev ps
+docker compose -f docker-compose.dev.yml $SITES_FILES --env-file .env.dev ps
 
 echo ""
 echo "✅ Environnement de développement démarré !"
@@ -75,6 +89,9 @@ echo "── Applications ──────────────────
 echo "🌐 Landing Page  : http://localhost:8080"
 echo "🌐 PMS Frontend  : http://localhost:3000"
 echo "🔧 PMS API       : http://localhost:8084"
+if [ -n "$SITES_FILES" ]; then
+    echo "🌐 Sites SSR     : http://localhost:3002"
+fi
 echo ""
 echo "── Infrastructure ────────────────────────────"
 echo "🗄️  PostgreSQL    : localhost:5433"
@@ -94,3 +111,6 @@ echo ""
 echo "💡 Pour voir les logs en temps réel :"
 echo "   docker compose -f docker-compose.dev.yml --env-file .env.dev logs -f pms-client"
 echo "   docker compose -f docker-compose.dev.yml --env-file .env.dev logs -f pms-server"
+if [ -n "$SITES_FILES" ]; then
+    echo "   docker compose -f docker-compose.dev.yml $SITES_FILES --env-file .env.dev logs -f clenzy-sites"
+fi
