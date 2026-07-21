@@ -84,7 +84,9 @@ services:
 
   # PostgreSQL
   postgres:
-    image: postgres:15-alpine
+    # Image avec extension pgvector pre-installee (requise pour kb_chunk RAG) —
+    # postgres:15-alpine casse le boot Hibernate ("$libdir/vector"). Voir CLAUDE.md.
+    image: pgvector/pgvector:pg15
     container_name: clenzy-postgres-staging
     restart: unless-stopped
     environment:
