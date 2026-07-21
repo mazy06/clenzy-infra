@@ -241,6 +241,13 @@ services:
       KC_PROXY: edge
       KC_HEALTH_ENABLED: "true"
       KC_METRICS_ENABLED: "true"
+    # Audit perf 2026-07-21 : cap memoire (image Keycloak = heap 70% du
+    # cgroup ; 1.5G de limite -> heap max ~1GB, usage observe 1.37GB
+    # sans limite faute de pression GC).
+    deploy:
+      resources:
+        limits:
+          memory: 1536M
     depends_on:
       postgres:
         condition: service_healthy
@@ -283,6 +290,13 @@ services:
       # KRaft cluster id — OBLIGATOIRE, doit être un UUID base64 URL-safe (22 chars).
       # Générer avec : head -c 16 /dev/urandom | base64 | tr '/+' '_-' | head -c 22
       CLUSTER_ID: ${KAFKA_CLUSTER_ID}
+      # Audit perf 2026-07-21 : heap borne (defaut cp-kafka = 1G ; broker
+      # mono-noeud a faible trafic, 512M suffisent largement).
+      KAFKA_HEAP_OPTS: "-Xms256m -Xmx512m"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
     volumes:
       - kafka-data-prod:/var/lib/kafka/data
     healthcheck:
@@ -302,6 +316,13 @@ services:
     environment:
       KAFKA_CLUSTERS_0_NAME: clenzy-prod
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: clenzy-kafka:9092
+      # Audit perf 2026-07-21 : outil de debug occasionnel, heap borne
+      # (usage observe 307MB sans limite).
+      JAVA_OPTS: "-Xmx256m"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
     depends_on:
       kafka:
         condition: service_healthy
@@ -400,12 +421,20 @@ services:
       STRIPE_CURRENCY: eur
       STRIPE_SUCCESS_URL: https://app.clenzy.fr/interventions/payment/success?session_id={CHECKOUT_SESSION_ID}
       STRIPE_CANCEL_URL: https://app.clenzy.fr/interventions/payment/cancel
-      # DataSource Primary (direct PostgreSQL — pgBouncer desactive temporairement, auth scram-sha-256 a configurer)
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}?sslmode=prefer
+      # DataSource Primary via pgBouncer (audit perf 2026-07-21 : cablage
+      # scram-sha-256 finalise — userlist en clair generee par
+      # pgbouncer/entrypoint.sh, cf. pgbouncer.ini).
+      # prepareThreshold=0 OBLIGATOIRE : pool_mode=transaction est
+      # incompatible avec les prepared statements server-side (erreur
+      # "prepared statement S_1 does not exist" sinon).
+      # sslmode=disable : pgbouncer n'expose pas TLS ; trafic interne au
+      # reseau Docker uniquement (postgres restait de toute facon en clair
+      # avec sslmode=prefer, le serveur n'ayant pas de certificat).
+      SPRING_DATASOURCE_URL: jdbc:postgresql://pgbouncer:6432/${POSTGRES_DB}?prepareThreshold=0&sslmode=disable
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
-      # DataSource Replica (pour @Transactional readOnly — fallback sur primary si non configure)
-      SPRING_DATASOURCE_REPLICA_URL: ${SPRING_DATASOURCE_REPLICA_URL:-jdbc:postgresql://postgres:5432/${POSTGRES_DB}?sslmode=prefer}
+      # DataSource Replica (pour @Transactional readOnly — fallback sur primary via pgBouncer si non configure)
+      SPRING_DATASOURCE_REPLICA_URL: ${SPRING_DATASOURCE_REPLICA_URL:-jdbc:postgresql://pgbouncer:6432/${POSTGRES_DB}?prepareThreshold=0&sslmode=disable}
       SPRING_DATASOURCE_REPLICA_USERNAME: ${POSTGRES_USER}
       SPRING_DATASOURCE_REPLICA_PASSWORD: ${POSTGRES_PASSWORD}
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: https://${AUTH_DOMAIN}/realms/clenzy
@@ -480,6 +509,13 @@ services:
       # CORS
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://${APP_DOMAIN}}
       SERVER_PORT: 8080
+    # Audit perf 2026-07-21 : cap memoire explicite. Sans limite, l'entrypoint
+    # (-XX:MaxRAMPercentage=75) vise 75% des 7.6GB du VPS (~5.6GB de heap
+    # potentiel). Avec 2G de limite : heap max ~1.5GB (usage observe 1.4GB).
+    deploy:
+      resources:
+        limits:
+          memory: 2G
     expose:
       - "8080"
     depends_on:
@@ -540,7 +576,11 @@ services:
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=90d'
+      # Audit perf 2026-07-21 : retention 90d -> 30d + plafond disque 2GB
+      # (le volume atteignait 4.4GB sur un disque de 72GB a 75%).
+      # Les blocs au-dela de la retention sont purges a la compaction.
+      - '--storage.tsdb.retention.time=30d'
+      - '--storage.tsdb.retention.size=2GB'
       - '--web.console.libraries=/etc/prometheus/console_libraries'
       - '--web.console.templates=/etc/prometheus/consoles'
     depends_on:
