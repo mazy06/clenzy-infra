@@ -51,12 +51,25 @@ docker builder prune -f 2>/dev/null || true
 echo "   ✅ Nettoyage terminé"
 echo ""
 
+# ─── PostgreSQL : garantir l'image pgvector (kb_chunk / RAG) ─────────────
+# L'image DOIT etre pgvector/pgvector:pg15 : postgres:15-alpine n'inclut PAS
+# l'extension pgvector -> le boot Hibernate echoue avec
+# "could not access file $libdir/vector" (introspection de kb_chunk).
+# On pull explicitement l'image declaree dans le compose pour qu'aucun ancien
+# container/image alpine ne soit reutilise silencieusement.
+echo "🧩 Vérification de l'image PostgreSQL (pgvector requise pour la RAG)..."
+docker compose -f docker-compose.dev.yml --env-file .env.dev pull postgres
+
 # Forcer le rebuild du frontend et du backend sans cache (pour toujours inclure les derniers changements)
 echo "🔨 Reconstruction du frontend et du backend (sans cache)..."
 docker compose -f docker-compose.dev.yml --env-file .env.dev build --no-cache pms-client pms-server
 
 # Démarrage de tous les services
+# --force-recreate postgres : si un ancien container tourne encore sur une
+# mauvaise image (alpine), on le recree sur pgvector. Le volume de donnees
+# persiste (aucune perte) — seul le binaire de l'extension est restaure.
 echo "🐳 Démarrage des conteneurs..."
+docker compose -f docker-compose.dev.yml --env-file .env.dev up -d --force-recreate postgres
 docker compose -f docker-compose.dev.yml --env-file .env.dev up -d
 
 # Attendre que les services soient prêts
