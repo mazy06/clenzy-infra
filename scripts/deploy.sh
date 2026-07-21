@@ -72,6 +72,22 @@ if [ -z "$KAFKA_CLUSTER_ID" ]; then
 fi
 
 # ===========================================
+# 0b. Maintenance hote (best-effort, non bloquant)
+# ===========================================
+# Audit perf 2026-07-21 : swap 4G + vm.swappiness=10 (filet anti-OOM).
+# Le script est idempotent (sort immediatement si le swap est deja actif).
+# Best-effort : un echec de droits ne doit jamais bloquer un deploiement.
+
+echo "🧷 Verification du swap hote..."
+if [ "$(id -u)" -eq 0 ]; then
+  bash scripts/vps-swap-setup.sh || echo "   ⚠️  Setup swap echoue (non bloquant)."
+elif sudo -n true 2>/dev/null; then
+  sudo -n bash scripts/vps-swap-setup.sh || echo "   ⚠️  Setup swap echoue (non bloquant)."
+else
+  echo "   ⚠️  Setup swap ignore (ni root ni sudo sans mot de passe)."
+fi
+
+# ===========================================
 # 1. Bootstrap PostgreSQL & Keycloak DB
 # ===========================================
 
@@ -279,6 +295,12 @@ else
     # Les donnees sont preservees (volume nomme postgres-data-prod).
     $DC up -d --force-recreate postgres redis
     wait_pg "apres mise a jour"
+    # pgbouncer : meme logique que postgres — entrypoint.sh et pgbouncer.ini
+    # sont des bind mounts, up -d ne detecte pas leurs changements de contenu.
+    # Force-recreate pour regenerer userlist.txt et relire la config
+    # (indispensable depuis le cablage scram-sha-256, audit perf 2026-07-21).
+    echo "   Phase 1a — Recreation pgBouncer..."
+    $DC up -d --force-recreate pgbouncer
     echo "   Phase 1b — Demarrage Kafka..."
     $DC up -d kafka
     wait_kafka "apres mise a jour"
@@ -323,7 +345,13 @@ fi
 # ===========================================
 
 echo "🧹 Nettoyage des anciennes images..."
-docker image prune -f
+# Audit perf 2026-07-21 : -a (et plus seulement les dangling) — les images
+# taggees non utilisees s'accumulaient (38GB constates sur 72GB de disque).
+# A ce stade du deploy tous les services tournent, leurs images sont donc
+# protegees. Le cache de build est plafonne a 8GB (utile uniquement au mode
+# full-rebuild ; 27GB constates sinon).
+docker image prune -af
+docker builder prune -f --keep-storage=8GB
 
 echo "♻️  Recreation de Nginx pour recharger la configuration..."
 $DC up -d --no-deps --force-recreate nginx
