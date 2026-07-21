@@ -1,0 +1,970 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "type": "dashboard",
+        "name": "Annotations & Alerts",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": false,
+      "title": "Overview",
+      "type": "link",
+      "url": "/d/clenzy-overview"
+    },
+    {
+      "asDropdown": false,
+      "icon": "doc",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": false,
+      "title": "Logs",
+      "type": "link",
+      "url": "/d/clenzy-logs"
+    }
+  ],
+  "liveNow": false,
+  "panels": [
+    {
+      "type": "text",
+      "title": "",
+      "id": 1,
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "### Audit performance PMS/RMS — 2026-07-21\nSuivi des correctifs des 5 vagues. **Cadence des jobs** : Baitly n'emet pas de metrique par tick de scheduler ; la cadence des jobs OTA s'observe via l'activite de sync (`pms_sync_success_total`). Apres le correctif de la vague 1 (15 s -> 15 min), la frequence de sync par channel doit chuter d'un facteur ~60. Les pools Hikari portent desormais le label `pool` (`clenzy-primary` / `clenzy-replica`)."
+      }
+    },
+    {
+      "type": "row",
+      "title": "Cadence des jobs planifies",
+      "collapsed": false,
+      "id": 2,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 3
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Sync OTA — exécutions / heure par channel",
+      "id": 3,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 4
+      },
+      "targets": [
+        {
+          "expr": "sum by (channel) (increase(pms_sync_success_total{job=\"clenzy-backend\"}[1h]))",
+          "legendFormat": "{{channel}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Nombre de sync reussies par heure et par channel. Proxy de la cadence des schedulers OTA : un job toutes les 15 min ≈ 4/h ; l'ancien bug (toutes les 15 s) donnait ~240/h."
+    },
+    {
+      "type": "timeseries",
+      "title": "Réconciliation channel — runs / heure",
+      "id": 4,
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 4
+      },
+      "targets": [
+        {
+          "expr": "increase(pms_reconciliation_runs_total{job=\"clenzy-backend\"}[1h])",
+          "legendFormat": "runs/h",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Runs de reconciliation calendrier (schedulers Channex horaires/3h)."
+    },
+    {
+      "type": "timeseries",
+      "title": "Outbox relay — débit (events/s)",
+      "id": 5,
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 4
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(pms_outbox_relay_latency_seconds_count{job=\"clenzy-backend\"}[5m]))",
+          "legendFormat": "events/s",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Debit du relay outbox -> Kafka. Depuis la vague 2, les envois sont pipelines par lot de 500 hors transaction."
+    },
+    {
+      "type": "row",
+      "title": "Pools de connexions Hikari",
+      "collapsed": false,
+      "id": 6,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Connexions actives par pool",
+      "id": 7,
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 13
+      },
+      "targets": [
+        {
+          "expr": "hikaricp_connections_active{job=\"clenzy-backend\"}",
+          "legendFormat": "{{pool}} active",
+          "refId": "A"
+        },
+        {
+          "expr": "hikaricp_connections_max{job=\"clenzy-backend\"}",
+          "legendFormat": "{{pool}} max",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Actives vs plafond. Avant la vague 1 : pool unique par defaut a 10 (goulot). Apres : clenzy-primary 25 + clenzy-replica 15."
+    },
+    {
+      "type": "timeseries",
+      "title": "File d'attente (threads en attente de connexion)",
+      "id": 8,
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 13
+      },
+      "targets": [
+        {
+          "expr": "hikaricp_connections_pending{job=\"clenzy-backend\"}",
+          "legendFormat": "{{pool}} pending",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Threads bloques en attente d'une connexion. Doit rester ~0. Toute valeur > 0 durable = pool sous-dimensionne ou fuite."
+    },
+    {
+      "type": "timeseries",
+      "title": "Timeouts d'acquisition (/5min) + temps moyen",
+      "id": 9,
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 13
+      },
+      "targets": [
+        {
+          "expr": "increase(hikaricp_connections_timeout_total{job=\"clenzy-backend\"}[5m])",
+          "legendFormat": "{{pool}} timeouts",
+          "refId": "A"
+        },
+        {
+          "expr": "hikaricp_connections_acquire_seconds_sum{job=\"clenzy-backend\"} / clamp_min(hikaricp_connections_acquire_seconds_count{job=\"clenzy-backend\"}, 1)",
+          "legendFormat": "{{pool}} acquire moy (s)",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Timeouts d'acquisition (symptome direct d'epuisement du pool) et temps moyen d'acquisition d'une connexion."
+    },
+    {
+      "type": "row",
+      "title": "Outbox & Kafka (chemin calendrier -> OTA)",
+      "collapsed": false,
+      "id": 10,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 21
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Backlog outbox (events PENDING)",
+      "id": 11,
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 22
+      },
+      "targets": [
+        {
+          "expr": "pms_outbox_pending{job=\"clenzy-backend\"}",
+          "legendFormat": "pending",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 25,
+            "showPoints": "never",
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Profondeur de la file outbox. Depuis la vague 1, le relay lit par lots de 500 (plus de chargement integral). Un backlog qui grimpe = Kafka indisponible."
+    },
+    {
+      "type": "timeseries",
+      "title": "Latence relay outbox moyenne",
+      "id": 12,
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 22
+      },
+      "targets": [
+        {
+          "expr": "rate(pms_outbox_relay_latency_seconds_sum{job=\"clenzy-backend\"}[5m]) / clamp_min(rate(pms_outbox_relay_latency_seconds_count{job=\"clenzy-backend\"}[5m]), 0.001)",
+          "legendFormat": "{{result}} moy",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Latence moyenne d'envoi d'un event vers Kafka (par resultat succes/erreur)."
+    },
+    {
+      "type": "timeseries",
+      "title": "Kafka consumer lag (max)",
+      "id": 13,
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 22
+      },
+      "targets": [
+        {
+          "expr": "kafka_consumer_fetch_manager_records_lag_max{job=\"clenzy-backend\"}",
+          "legendFormat": "lag max",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Retard de consommation Kafka. Vide si les metriques consumer ne sont pas bindees sur ce broker."
+    },
+    {
+      "type": "row",
+      "title": "Sync channels — santé",
+      "collapsed": false,
+      "id": 14,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 30
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Succès vs échecs de sync (/s)",
+      "id": 15,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 31
+      },
+      "targets": [
+        {
+          "expr": "sum by (channel) (rate(pms_sync_success_total{job=\"clenzy-backend\"}[5m]))",
+          "legendFormat": "{{channel}} ok",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (channel) (rate(pms_sync_failure_total{job=\"clenzy-backend\"}[5m]))",
+          "legendFormat": "{{channel}} echec",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Latence sync p95 par channel",
+      "id": 16,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 31
+      },
+      "targets": [
+        {
+          "expr": "pms_sync_latency_seconds{job=\"clenzy-backend\", quantile=\"0.95\"}",
+          "legendFormat": "{{channel}} p95",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Percentile 95 publie cote application (publishPercentiles)."
+    },
+    {
+      "type": "row",
+      "title": "Intégrité calendrier",
+      "collapsed": false,
+      "id": 17,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 39
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Conflits & contention de lock (/h)",
+      "id": 18,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 40
+      },
+      "targets": [
+        {
+          "expr": "increase(pms_calendar_conflict_detected_total{job=\"clenzy-backend\"}[1h])",
+          "legendFormat": "conflits/h",
+          "refId": "A"
+        },
+        {
+          "expr": "increase(pms_calendar_lock_contention_total{job=\"clenzy-backend\"}[1h])",
+          "legendFormat": "contention lock/h",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Double-bookings évités (/h)",
+      "id": 19,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 40
+      },
+      "targets": [
+        {
+          "expr": "increase(pms_reservation_double_booking_prevented_total{job=\"clenzy-backend\"}[1h])",
+          "legendFormat": "evites/h",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Double-reservations bloquees par la detection de conflit."
+    },
+    {
+      "type": "row",
+      "title": "HTTP & ressources (santé générale)",
+      "collapsed": false,
+      "id": 20,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 48
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Requêtes / s",
+      "id": 21,
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 0,
+        "y": 49
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_requests_seconds_count{job=\"clenzy-backend\"}[1m]))",
+          "legendFormat": "req/s",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Latence HTTP p95 / p99",
+      "id": 22,
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 8,
+        "y": 49
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{job=\"clenzy-backend\"}[5m])) by (le))",
+          "legendFormat": "p95",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{job=\"clenzy-backend\"}[5m])) by (le))",
+          "legendFormat": "p99",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Erreurs 5xx / s",
+      "id": 23,
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 16,
+        "y": 49
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_requests_seconds_count{job=\"clenzy-backend\", status=~\"5..\"}[5m]))",
+          "legendFormat": "5xx",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "lineWidth": 2
+          },
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "red"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "JVM Heap",
+      "id": 24,
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 0,
+        "y": 56
+      },
+      "targets": [
+        {
+          "expr": "jvm_memory_used_bytes{job=\"clenzy-backend\", area=\"heap\"}",
+          "legendFormat": "used",
+          "refId": "A"
+        },
+        {
+          "expr": "jvm_memory_max_bytes{job=\"clenzy-backend\", area=\"heap\"}",
+          "legendFormat": "max",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Pauses GC (p95)",
+      "id": 25,
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 8,
+        "y": 56
+      },
+      "targets": [
+        {
+          "expr": "rate(jvm_gc_pause_seconds_sum{job=\"clenzy-backend\"}[5m]) / clamp_min(rate(jvm_gc_pause_seconds_count{job=\"clenzy-backend\"}[5m]), 0.001)",
+          "legendFormat": "pause moy",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Cache Redis — hit / miss (/s)",
+      "id": 26,
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 16,
+        "y": 56
+      },
+      "targets": [
+        {
+          "expr": "rate(clenzy_cache_hits_total{job=\"clenzy-backend\"}[5m])",
+          "legendFormat": "hits",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(clenzy_cache_misses_total{job=\"clenzy-backend\"}[5m])",
+          "legendFormat": "misses",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Caches 2 couches (Caffeine + Redis), dont les caches booking engine ajoutes en vague 4."
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": [
+    "clenzy",
+    "performance",
+    "audit",
+    "ops"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "Europe/Paris",
+  "title": "Clenzy PMS — Audit performance (jobs, pools, outbox)",
+  "uid": "clenzy-perf-audit",
+  "version": 1
+}
