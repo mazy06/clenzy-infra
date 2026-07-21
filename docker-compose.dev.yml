@@ -254,6 +254,28 @@ services:
           - clenzy-libreoffice
 
   # ==========================================
+  # go2rtc — passerelle media cameras (RTSP -> WebRTC)
+  # ==========================================
+  go2rtc:
+    image: alexxit/go2rtc:1.9.4
+    container_name: clenzy-go2rtc-dev
+    restart: unless-stopped
+    ports:
+      - "1984:1984"        # API / lecture WebRTC (HTTP)
+      - "8555:8555/tcp"    # WebRTC media (ICE)
+      - "8555:8555/udp"
+    volumes:
+      - ./go2rtc/go2rtc.yaml:/config/go2rtc.yaml:ro
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    networks:
+      clenzy-network:
+        aliases:
+          - clenzy-go2rtc
+
+  # ==========================================
   # PMS (Application métier)
   # ==========================================
 
@@ -302,6 +324,13 @@ services:
       JASYPT_ENCRYPTOR_PASSWORD: ${JASYPT_ENCRYPTOR_PASSWORD:-dev-jasypt-secret-key}
       # JaCoCo — chemin vers le rapport monte en volume
       CLENZY_JACOCO_REPORT_PATH: /app/jacoco/jacoco.xml
+      # WhatsApp OpenWA (test relais) — instance lancee separement (cf. openwa/).
+      # base-url via host.docker.internal car OpenWA expose 127.0.0.1:2785 sur l'hote (Docker Desktop Mac).
+      # La master key OpenWA est stockee CHIFFREE EN BDD (saisie depuis l'UI), plus en env.
+      CLENZY_WHATSAPP_OPENWA_BASE_URL: http://host.docker.internal:2785
+      # URL que OpenWA appelle pour le relais ENTRANT (guest -> host). pms-server expose
+      # 8084 sur l'hote, joignable depuis le container OpenWA via host.docker.internal.
+      CLENZY_WHATSAPP_OPENWA_WEBHOOK_URL: http://host.docker.internal:8084/api/webhooks/whatsapp/openwa
     ports:
       - "8084:8080"
     depends_on:
@@ -319,10 +348,6 @@ services:
       - contact-uploads-dev:/app/uploads/contact
       - document-templates-dev:/app/uploads/templates
       - document-generated-dev:/app/uploads/documents
-      # NOTE: user-avatars-dev n'est plus monte — les avatars sont stockes
-      # en Postgres BYTEA via BinaryAssetStorage (migration 0159). Le volume
-      # est conserve dans la section `volumes:` ci-dessous comme orphelin
-      # (a supprimer apres confirmation que rien d'utile n'y reste).
       - ../clenzy/server/target/site/jacoco:/app/jacoco:ro
     networks:
       clenzy-network:
@@ -353,9 +378,14 @@ services:
     volumes:
       # Code source live-mounted depuis l'hote
       - ../clenzy/client:/app
-      # Volume anonyme : preserve les node_modules du container (binaires Linux)
-      # et empeche les node_modules locaux (macOS) de les ecraser
-      - /app/node_modules
+      # Volume NOMME : preserve les node_modules du container (binaires Linux)
+      # et empeche les node_modules locaux (macOS) de les ecraser.
+      # Nomme (et non anonyme) pour etre REUTILISE a chaque recreation du container.
+      # Un volume anonyme en recreait un de ~460 MB a chaque `up`, d'ou une fuite disque
+      # (la VM Docker s'etait remplie de dizaines de node_modules orphelins).
+      # Apres un changement de dependances :
+      #   docker volume rm clenzy-infra_frontend-node-modules-dev && docker compose -f docker-compose.dev.yml up --build
+      - frontend-node-modules-dev:/app/node_modules
     networks:
       clenzy-network:
         aliases:
@@ -485,10 +515,10 @@ volumes:
   contact-uploads-dev:
   document-templates-dev:
   document-generated-dev:
-  user-avatars-dev:
   prometheus-data-dev:
   grafana-data-dev:
   loki-data-dev:
+  frontend-node-modules-dev:
 
 networks:
   clenzy-network:
