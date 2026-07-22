@@ -439,6 +439,10 @@ services:
       SPRING_DATASOURCE_REPLICA_PASSWORD: ${POSTGRES_PASSWORD}
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: https://${AUTH_DOMAIN}/realms/clenzy
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://clenzy-keycloak:8080/realms/clenzy/protocol/openid-connect/certs
+      # JWT audience attendue (defense-in-depth contre cross-client intra-realm).
+      # Prerequis : le mapper Audience doit etre configure cote Keycloak sur le client
+      # clenzy-api (voir docs/runbooks/jwt-audience-rollout.md, ~2 min).
+      CLENZY_JWT_EXPECTED_AUDIENCE: ${CLENZY_JWT_EXPECTED_AUDIENCE:-clenzy-api}
       KEYCLOAK_AUTH_SERVER_URL: http://clenzy-keycloak:8080
       KEYCLOAK_CLIENT_ID: clenzy-api
       KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET}
@@ -460,6 +464,10 @@ services:
       SPRING_KAFKA_BOOTSTRAP_SERVERS: clenzy-kafka:9092
       # Jasypt (chiffrement tokens Airbnb en base)
       JASYPT_ENCRYPTOR_PASSWORD: ${JASYPT_ENCRYPTOR_PASSWORD}
+      # Channex (Channel Manager — distribution OTAs)
+      CHANNEX_BASE_URL: ${CHANNEX_BASE_URL:-https://app.channex.io/api/v1}
+      CHANNEX_API_KEY: ${CHANNEX_API_KEY:-}
+      CHANNEX_WEBHOOK_SECRET: ${CHANNEX_WEBHOOK_SECRET:-}
       # Token partage des alertes ops (POST /api/ops/alerts) -> clenzy.ops.alert-token.
       # Meme valeur que le secret GitHub OPS_ALERT_TOKEN et le credentials_file Alertmanager.
       CLENZY_OPS_ALERT_TOKEN: ${CLENZY_OPS_ALERT_TOKEN:-}
