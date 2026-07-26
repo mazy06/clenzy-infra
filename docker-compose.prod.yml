@@ -163,6 +163,37 @@ services:
   # PgBouncer — Connection Pooling
   # Niveau 8 — Scalabilite : reduit les connexions directes a PostgreSQL
   # de ~50 (HikariCP) a ~25 (pool pgBouncer), avec support 200 clients.
+  # Role applicatif non-superuser — audit securite 2026-07-26, plan REM-T-02.
+  #
+  # Un superuser contourne la RLS meme posee et FORCEE : tant que l'application se
+  # connecte avec le compte proprietaire, activer la RLS n'apporterait aucune
+  # protection. Ce service one-shot cree/resynchronise le role a chaque deploiement.
+  #
+  # Il n'est PAS dans /docker-entrypoint-initdb.d/ : ces scripts ne s'executent qu'au
+  # tout premier init du volume, donc jamais sur une base deja en place.
+  #
+  # NO-OP tant que CLENZY_APP_DB_PASSWORD est absent du .env : deployable des
+  # maintenant sans rien changer au comportement actuel.
+  db-app-role:
+    image: pgvector/pgvector:pg15
+    container_name: clenzy-db-app-role-prod
+    restart: "no"
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
+      CLENZY_APP_DB_PASSWORD: ${CLENZY_APP_DB_PASSWORD:-}
+    volumes:
+      - ./postgres/ensure-app-role.sh:/ensure-app-role.sh:ro
+    entrypoint: ["/bin/bash", "/ensure-app-role.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - clenzy-network
+
   pgbouncer:
     image: edoburu/pgbouncer:v1.23.1-p3
     container_name: clenzy-pgbouncer-prod
@@ -170,6 +201,9 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # pgbouncer authentifie AVANT PostgreSQL : sans cette variable, le role
+      # applicatif serait rejete ici meme s'il existe en base (plan REM-T-02).
+      CLENZY_APP_DB_PASSWORD: ${CLENZY_APP_DB_PASSWORD:-}
     volumes:
       - ./pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
       - ./pgbouncer/entrypoint.sh:/entrypoint.sh:ro
@@ -438,8 +472,23 @@ services:
       # reseau Docker uniquement (postgres restait de toute facon en clair
       # avec sslmode=prefer, le serveur n'ayant pas de certificat).
       SPRING_DATASOURCE_URL: jdbc:postgresql://pgbouncer:6432/${POSTGRES_DB}?prepareThreshold=0&sslmode=disable
-      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
-      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      # Bascule vers le role applicatif non-superuser (plan REM-T-02, etape 2).
+      # Interrupteur : poser CLENZY_APP_DB_USER=clenzy_app dans le .env. Tant que
+      # cette variable est absente, l'application utilise le compte proprietaire —
+      # le comportement actuel est donc strictement preserve.
+      # Ne poser CLENZY_APP_DB_USER qu'APRES un deploiement ou le role a ete cree
+      # (service db-app-role) ET ou le changeset 0362 a accorde les privileges DML.
+      # Ces DEUX variables se posent ENSEMBLE. En poser une seule produirait une
+      # combinaison invalide (identifiant d'un compte, mot de passe de l'autre) et
+      # l'application ne pourrait plus se connecter.
+      # CLENZY_APP_DB_PASSWORD seule (etape 1) cree le role sans rien basculer :
+      # c'est volontairement une variable DIFFERENTE de celle lue ici.
+      SPRING_DATASOURCE_USERNAME: ${CLENZY_APP_DB_USER:-${POSTGRES_USER}}
+      SPRING_DATASOURCE_PASSWORD: ${CLENZY_APP_DB_USER_PASSWORD:-${POSTGRES_PASSWORD}}
+      # Liquibase garde le compte proprietaire : le DDL des futurs changesets exige
+      # la propriete des tables, que le role applicatif n'a deliberement pas.
+      SPRING_LIQUIBASE_USERNAME: ${POSTGRES_USER}
+      SPRING_LIQUIBASE_PASSWORD: ${POSTGRES_PASSWORD}
       # DataSource Replica (pour @Transactional readOnly — fallback sur primary via pgBouncer si non configure)
       SPRING_DATASOURCE_REPLICA_URL: ${SPRING_DATASOURCE_REPLICA_URL:-jdbc:postgresql://pgbouncer:6432/${POSTGRES_DB}?prepareThreshold=0&sslmode=disable}
       SPRING_DATASOURCE_REPLICA_USERNAME: ${POSTGRES_USER}
@@ -526,6 +575,12 @@ services:
     expose:
       - "8080"
     depends_on:
+      # Le role applicatif doit exister avant que l'application ne tente de s'y
+      # connecter. service_completed_successfully : db-app-role est un one-shot, il
+      # se termine (code 0) une fois le role cree — ou immediatement, en no-op, tant
+      # que le secret n'est pas pose.
+      db-app-role:
+        condition: service_completed_successfully
       pgbouncer:
         condition: service_healthy
       keycloak:
