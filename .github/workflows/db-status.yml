@@ -150,15 +150,15 @@ jobs:
             VALIDATE_RC=0
 
             echo ""
-            echo "[1/7] liquibase status --verbose"
+            echo "[1/8] liquibase status --verbose"
             run_liquibase status --verbose 2>&1 | tee "$STATUS_OUT" || STATUS_RC=$?
 
             echo ""
-            echo "[2/7] liquibase validate"
+            echo "[2/8] liquibase validate"
             run_liquibase validate 2>&1 | tee "$VALIDATE_OUT" || VALIDATE_RC=$?
 
             echo ""
-            echo "[3/7] databasechangelog metrics"
+            echo "[3/8] databasechangelog metrics"
             TOTAL=$($DC exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
               "SELECT count(*) FROM databasechangelog;" 2>/dev/null | tr -d '[:space:]' || echo "?")
             LAST_DATE=$($DC exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
@@ -179,7 +179,7 @@ jobs:
             fi
 
             echo ""
-            echo "[4/7] controles d'integrite pre-migration (lecture seule)"
+            echo "[4/8] controles d'integrite pre-migration (lecture seule)"
             # Le changeset 0361 pose des contraintes UNIQUE sur payment_transactions et
             # REFUSE de s'appliquer si des doublons existent — un changeset qui echoue
             # empeche l'application de demarrer. Ces deux requetes disent, AVANT tout
@@ -222,7 +222,7 @@ jobs:
             fi
 
             echo ""
-            echo "[5/7] escrows liberes jamais reversés (controle CTRL-2)"
+            echo "[5/8] escrows liberes jamais reversés (controle CTRL-2)"
             # Jusqu'au correctif P1-14, chaque liberation d'escrow echouait en silence :
             # SplitPaymentService appelait getRequiredOrganizationId() sur un thread Kafka
             # ou le contexte est vide, et l'exception etait avalee. Proprietaires et
@@ -259,7 +259,27 @@ jobs:
             fi
 
             echo ""
-            echo "[6/7] role applicatif non-superuser (plan REM-T-02)"
+            echo "[6/8] pages publiees portant l'ancienne URL media (controle P1-06)"
+            # La route /api/public/media/{id} est anonyme et l'identifiant sequentiel : toute
+            # la mediatheque est enumerable. Elle a ete remplacee par un jeton opaque, mais ne
+            # peut pas etre retiree tant que des pages publiees la referencent — leurs images
+            # deviendraient introuvables.
+            # Le compteur cote application (log MEDIA/P1-06) mesure l'usage reel ; cette
+            # requete mesure la cause. Les deux doivent etre a zero avant tout retrait.
+            PAGES_ANCIENNE_URL=$($DC exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
+              "SELECT count(*) FROM site_pages \
+                WHERE published_blocks IS NOT NULL \
+                  AND published_blocks ~ '/api/public/media/[0-9]';" 2>/dev/null | tr -d '[:space:]' || echo "?")
+
+            echo "Pages publiees a republier : $PAGES_ANCIENNE_URL"
+
+            if [ "$PAGES_ANCIENNE_URL" != "0" ] && [ "$PAGES_ANCIENNE_URL" != "?" ]; then
+              echo "  → la route heritee ne peut PAS etre retiree : ces pages perdraient leurs"
+              echo "    images. Les republier depuis le Studio pour qu'elles adoptent le jeton."
+            fi
+
+            echo ""
+            echo "[7/8] role applicatif non-superuser (plan REM-T-02)"
             # Repond a trois questions, dans l'ordre du deploiement :
             #   1. le role existe-t-il, et est-il bien NOSUPERUSER / NOBYPASSRLS ?
             #      (un superuser contournerait la RLS meme posee et FORCEE)
@@ -371,7 +391,7 @@ jobs:
             #   503 → un indicator est DOWN → declencher PMS Server Diag
             #   non-joignable → app crashee ou en restart-loop
             echo ""
-            echo "[7/7] LiquibaseHealthIndicator sanity check"
+            echo "[8/8] LiquibaseHealthIndicator sanity check"
 
             HEALTH_CODE=$($DC exec -T pms-server sh -c \
               "curl -sf -o /dev/null -w '%{http_code}' --max-time 5 \
