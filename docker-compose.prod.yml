@@ -538,6 +538,13 @@ services:
       # pour garantir le mode tolerant quel que soit le .env du VPS. A RESTAURER en
       # "${CLENZY_FIELD_ENCRYPTION_FAIL_ON_DECRYPT_ERROR:-false}" une fois le backfill confirme dans les logs.
       CLENZY_SECURITY_FIELDENCRYPTION_FAILONDECRYPTERROR: "false"
+      # Instrumentation de mesure RLS (plan REM-T-01) : recense les requetes qui
+      # echapperaient a la Row-Level Security AVANT de l'activer. Sans contexte tenant,
+      # une requete ne leve pas d'erreur — elle renvoie zero ligne. Chaque ligne
+      # RLS/AUDIT des logs designe un chemin a corriger.
+      # Nom SANS tirets : Spring supprime ceux de `audit-missing-guc` (meme regle que
+      # CLENZY_SECURITY_FIELDENCRYPTION_FAILONDECRYPTERROR ci-dessus).
+      CLENZY_SECURITY_RLS_AUDITMISSINGGUC: ${CLENZY_SECURITY_RLS_AUDITMISSINGGUC:-false}
       # Airbnb Integration
       AIRBNB_CLIENT_ID: ${AIRBNB_CLIENT_ID:-}
       AIRBNB_CLIENT_SECRET: ${AIRBNB_CLIENT_SECRET:-}
