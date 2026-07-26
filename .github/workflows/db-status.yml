@@ -266,8 +266,27 @@ jobs:
             echo "Comptes connectes a la base : $APP_CONN"
 
             # Parse pending count from `status` output (line "X changesets have not been applied")
-            PENDING=$(grep -oE '^[0-9]+ changesets? have not been applied' "$STATUS_OUT" | grep -oE '^[0-9]+' | head -1 || true)
-            PENDING=${PENDING:-0}
+            PENDING_RAW=$(grep -oE '^[0-9]+ changesets? have not been applied' "$STATUS_OUT" | grep -oE '^[0-9]+' | head -1 || true)
+            PENDING_RAW=${PENDING_RAW:-0}
+
+            # Certains changesets sont listes « not applied » a chaque execution, par
+            # conception — les compter comme un ecart rendrait ce workflow rouge en
+            # permanence, y compris son execution planifiee, et l'alerte finirait par
+            # etre ignoree. On les exclut nommement plutot que d'assouplir le seuil :
+            #   0345 : pose la RLS, volontairement dormant tant que le contexte `rls`
+            #          n'est pas actif (voir plan REM-T-01) ;
+            #   0362 : runAlways — rejoue a chaque boot pour accorder les privileges au
+            #          role applicatif meme s'il est cree apres coup. Idempotent.
+            # Toute AUTRE ligne en attente reste un ecart reel et fait echouer le job.
+            EXPECTED_PENDING='0345-enable-rls-priority-tables|0362-grant-privileges-to-app-role'
+            UNEXPECTED=$(grep -oE 'db\.changelog-master\.yaml::[^:]+::' "$STATUS_OUT" \
+                          | grep -vE "$EXPECTED_PENDING" | wc -l | tr -d '[:space:]')
+            PENDING=${UNEXPECTED:-0}
+
+            if [ "$PENDING_RAW" != "$PENDING" ]; then
+              echo "Changesets en attente (bruts) : $PENDING_RAW"
+              echo "  dont attendus par conception : $((PENDING_RAW - PENDING)) (RLS dormante, runAlways)"
+            fi
 
             echo ""
             echo "=========================================="
