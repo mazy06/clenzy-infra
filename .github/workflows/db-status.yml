@@ -150,15 +150,15 @@ jobs:
             VALIDATE_RC=0
 
             echo ""
-            echo "[1/3] liquibase status --verbose"
+            echo "[1/4] liquibase status --verbose"
             run_liquibase status --verbose 2>&1 | tee "$STATUS_OUT" || STATUS_RC=$?
 
             echo ""
-            echo "[2/3] liquibase validate"
+            echo "[2/4] liquibase validate"
             run_liquibase validate 2>&1 | tee "$VALIDATE_OUT" || VALIDATE_RC=$?
 
             echo ""
-            echo "[3/3] databasechangelog metrics"
+            echo "[3/4] databasechangelog metrics"
             TOTAL=$($DC exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
               "SELECT count(*) FROM databasechangelog;" 2>/dev/null | tr -d '[:space:]' || echo "?")
             LAST_DATE=$($DC exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
@@ -176,6 +176,49 @@ jobs:
               $DC exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
                 -c "SELECT id, author, exectype, dateexecuted, tag FROM databasechangelog ORDER BY orderexecuted DESC LIMIT 10;" \
                 2>&1 || true
+            fi
+
+            echo ""
+            echo "[4/4] controles d'integrite pre-migration (lecture seule)"
+            # Le changeset 0361 pose des contraintes UNIQUE sur payment_transactions et
+            # REFUSE de s'appliquer si des doublons existent — un changeset qui echoue
+            # empeche l'application de demarrer. Ces deux requetes disent, AVANT tout
+            # deploiement, si la voie est libre. Elles ne modifient rien.
+            # Audit securite 2026-07-26, controle CTRL-1.
+            DUP_REF=$($DC exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
+              "SELECT count(*) FROM (SELECT transaction_ref FROM payment_transactions \
+               GROUP BY transaction_ref HAVING count(*) > 1) d;" 2>/dev/null | tr -d '[:space:]' || echo "?")
+            DUP_IDEM=$($DC exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
+              "SELECT count(*) FROM (SELECT idempotency_key FROM payment_transactions \
+               WHERE idempotency_key IS NOT NULL \
+               GROUP BY idempotency_key HAVING count(*) > 1) d;" 2>/dev/null | tr -d '[:space:]' || echo "?")
+
+            echo "Doublons transaction_ref  : $DUP_REF"
+            echo "Doublons idempotency_key  : $DUP_IDEM"
+
+            if [ "$DUP_REF" != "0" ] || [ "$DUP_IDEM" != "0" ]; then
+              echo "ATTENTION : le changeset 0361 echouera et l'application ne demarrera pas."
+              echo "            Auditer ces lignes AVANT de deployer — sur des donnees"
+              echo "            financieres, un doublon s'audite, il ne se fusionne pas."
+              if [ "$VERBOSE_DUMP" = "true" ]; then
+                echo ""
+                echo "Detail des doublons de transaction_ref :"
+                $DC exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c \
+                  "SELECT transaction_ref, count(*) AS occurrences, \
+                          string_agg(id::text, ', ' ORDER BY id) AS ids, \
+                          string_agg(DISTINCT status, ', ') AS statuts \
+                     FROM payment_transactions GROUP BY transaction_ref \
+                    HAVING count(*) > 1 ORDER BY occurrences DESC;" 2>&1 || true
+                echo ""
+                echo "Detail des doublons d'idempotency_key :"
+                $DC exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c \
+                  "SELECT idempotency_key, count(*) AS occurrences, \
+                          string_agg(id::text, ', ' ORDER BY id) AS ids, \
+                          sum(amount) AS montant_cumule, \
+                          string_agg(DISTINCT currency, ', ') AS devises \
+                     FROM payment_transactions WHERE idempotency_key IS NOT NULL \
+                    GROUP BY idempotency_key HAVING count(*) > 1 ORDER BY occurrences DESC;" 2>&1 || true
+              fi
             fi
 
             # Parse pending count from `status` output (line "X changesets have not been applied")
