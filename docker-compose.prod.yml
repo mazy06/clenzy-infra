@@ -545,6 +545,20 @@ services:
       # Nom SANS tirets : Spring supprime ceux de `audit-missing-guc` (meme regle que
       # CLENZY_SECURITY_FIELDENCRYPTION_FAILONDECRYPTERROR ci-dessus).
       CLENZY_SECURITY_RLS_AUDITMISSINGGUC: ${CLENZY_SECURITY_RLS_AUDITMISSINGGUC:-false}
+      # Pose des GUC de contexte tenant (app.current_org / app.bypass_rls).
+      #
+      # ⚠️ INDISPENSABLE POUR QUE L'INSTRUMENTATION CI-DESSUS MESURE QUELQUE CHOSE.
+      # Tant que ce flag vaut false, l'aspect est inerte et n'emet aucune GUC : l'audit
+      # signalerait alors TOUTES les requetes sur les cinq tables, pas seulement les
+      # chemins reellement a risque — un inventaire ininterpretable.
+      #
+      # Le poser a true est SANS RISQUE tant que le contexte Liquibase `rls` n'est pas
+      # active : les GUC sont posees, mais aucune politique ne les lit. Zero changement
+      # de comportement, et l'audit devient exploitable.
+      #
+      # C'est aussi l'ordre d'activation a respecter le jour venu : enabled=true d'abord,
+      # contexte `rls` ensuite. L'inverse viderait les ecrans.
+      CLENZY_SECURITY_RLS_ENABLED: ${CLENZY_SECURITY_RLS_ENABLED:-false}
       # Airbnb Integration
       AIRBNB_CLIENT_ID: ${AIRBNB_CLIENT_ID:-}
       AIRBNB_CLIENT_SECRET: ${AIRBNB_CLIENT_SECRET:-}
