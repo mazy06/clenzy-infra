@@ -316,6 +316,13 @@ services:
     environment:
       KAFKA_CLUSTERS_0_NAME: clenzy-prod
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: clenzy-kafka:9092
+      # Audit securite 2026-07 (P5-01) : LECTURE SEULE — ne jamais repasser a "false".
+      # L'UI est exposee sur ${KAFKA_UI_DOMAIN} derriere un simple basic-auth, alors que
+      # le broker n'a ni SASL ni ACL. En ecriture, elle offrait un produce arbitraire sur
+      # tous les topics : forge de documents.generate (facture d'un autre tenant envoyee a
+      # une adresse choisie) et de payment.events (reservation impayee passee a PAID).
+      # La lecture des topics / messages / consumer groups reste disponible pour le debug.
+      KAFKA_CLUSTERS_0_READONLY: "true"
       # Audit perf 2026-07-21 : outil de debug occasionnel, heap borne
       # (usage observe 307MB sans limite).
       JAVA_OPTS: "-Xmx256m"
