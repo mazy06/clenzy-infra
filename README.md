@@ -242,9 +242,7 @@ clenzy-infra/
 ├── docker-compose.prod.yml      # Orchestration prod (8 services + Nginx + Certbot)
 ├── nginx/
 │   ├── nginx.conf.template      # Template reverse proxy prod (variables DOMAIN/APP_DOMAIN/AUTH_DOMAIN)
-│   └── ssl/                     # Certificats SSL auto-signes (dev)
-│       ├── clenzy.fr.crt
-│       └── clenzy.fr.key
+│   └── ssl/                     # Vide et ignore par git — aucun certificat versionne
 ├── init-scripts/
 │   └── 01-init-databases.sql    # Creation auto des bases (clenzy_dev + keycloak_dev)
 ├── .env.dev                     # Variables d'env + identifiants dev (pret a l'emploi)
@@ -305,7 +303,26 @@ nano .env
 
 ### Certificats auto-signes (dev)
 
-Les certificats auto-signes dans `nginx/ssl/` sont utilises pour le developpement local uniquement. Les navigateurs afficheront un avertissement de securite — c'est normal.
+**Aucun certificat n'est versionne.** Le repertoire `nginx/ssl/` est vide et couvert par
+`.gitignore` depuis l'audit securite du 2026-07-26 (constat P8-02) : une cle privee, meme
+auto-signee, n'a pas sa place dans un depot, et l'exception qui existait aurait laisse
+passer un vrai `privkey.pem` sans bruit.
+
+Aucune configuration nginx n'utilise ce repertoire : les 12 directives `ssl_certificate`
+pointent vers `/etc/letsencrypt/live/…`. Il n'est donc normalement pas necessaire d'y
+placer quoi que ce soit.
+
+Si un certificat auto-signe est malgre tout utile en local, le generer sans le committer :
+
+```bash
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout nginx/ssl/local.key -out nginx/ssl/local.crt \
+  -subj "/CN=localhost" \
+  -addext "subjectAltName=DNS:localhost,DNS:app.localhost"
+```
+
+Les navigateurs afficheront un avertissement de securite — c'est normal pour un
+certificat auto-signe.
 
 ### Certificats Let's Encrypt (prod)
 

@@ -8,12 +8,15 @@ PROD_ENV_FILE_B64.txt
 # Token Alertmanager -> app (ecrit au deploiement depuis CLENZY_OPS_ALERT_TOKEN)
 monitoring/alertmanager/ops_token
 
-# SSL certificates (production)
-# Les certificats auto-signés de dev sont versionnés
-# En prod, remplacer par de vrais certificats (Let's Encrypt, etc.)
-# nginx/ssl/*.crt
-# nginx/ssl/*.key
-# nginx/ssl/*.pem
+# SSL certificates — AUCUN certificat ni clé ne doit être versionné.
+# Règles réactivées le 2026-07-26 (audit sécurité, constat P8-02). Elles étaient
+# commentées au motif que « les certificats auto-signés de dev sont versionnés » :
+# cette exception rendait silencieux l'ajout d'une vraie clé privée au même endroit.
+# La production sert Let's Encrypt (/etc/letsencrypt/live/…) ; le montage
+# ./nginx/ssl n'a aucun consommateur dans les confs nginx.
+nginx/ssl/*.crt
+nginx/ssl/*.key
+nginx/ssl/*.pem
 
 # Docker volumes data
 postgres-data-*/
