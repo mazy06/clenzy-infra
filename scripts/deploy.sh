@@ -295,13 +295,25 @@ else
     # Les donnees sont preservees (volume nomme postgres-data-prod).
     $DC up -d --force-recreate postgres redis
     wait_pg "apres mise a jour"
+    # db-app-role : one-shot idempotent (role applicatif non-superuser, REM-T-02).
+    # --force-recreate est INDISPENSABLE ici. `up -d` seul se contente de REDEMARRER
+    # un conteneur deja cree, qui conserve l'environnement fige au moment de sa
+    # creation : un CLENZY_APP_DB_PASSWORD ajoute au .env par la suite ne serait
+    # jamais pris en compte, et le role ne serait jamais cree — sans la moindre
+    # erreur visible, le conteneur sortant en succes apres son no-op.
+    echo "   Phase 1a — Role applicatif (db-app-role)..."
+    $DC up -d --force-recreate db-app-role || true
+    # La sortie d'un one-shot n'apparait pas dans `up -d` : on la remonte ici, sinon
+    # rien ne distingue un role cree d'un no-op silencieux.
+    $DC logs --no-log-prefix db-app-role 2>/dev/null | tail -n 12 || true
+
     # pgbouncer : meme logique que postgres — entrypoint.sh et pgbouncer.ini
     # sont des bind mounts, up -d ne detecte pas leurs changements de contenu.
     # Force-recreate pour regenerer userlist.txt et relire la config
     # (indispensable depuis le cablage scram-sha-256, audit perf 2026-07-21).
-    echo "   Phase 1a — Recreation pgBouncer..."
+    echo "   Phase 1b — Recreation pgBouncer..."
     $DC up -d --force-recreate pgbouncer
-    echo "   Phase 1b — Demarrage Kafka..."
+    echo "   Phase 1c — Demarrage Kafka..."
     $DC up -d kafka
     wait_kafka "apres mise a jour"
     echo "   Phase 2 — Demarrage de tous les services..."
