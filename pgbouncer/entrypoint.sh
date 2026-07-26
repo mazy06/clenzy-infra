@@ -23,6 +23,17 @@ cat > "$USERLIST_FILE" <<EOF
 "pgbouncer_stats" "${POSTGRES_PASSWORD}"
 EOF
 
+# Role applicatif non-superuser (audit securite 2026-07-26, plan REM-T-02).
+# pgbouncer authentifie AVANT PostgreSQL : un role absent de ce fichier est
+# rejete ici meme s'il existe en base. L'oublier casserait le demarrage de
+# l'application au moment de la bascule.
+# Ajoute uniquement si le secret est pose : sans lui, le comportement est
+# strictement inchange.
+if [ -n "${CLENZY_APP_DB_PASSWORD:-}" ]; then
+    echo "\"clenzy_app\" \"${CLENZY_APP_DB_PASSWORD}\"" >> "$USERLIST_FILE"
+    echo "==> role applicatif clenzy_app ajoute au userlist"
+fi
+
 chmod 600 "$USERLIST_FILE"
 echo "==> userlist.txt generated for user: ${POSTGRES_USER}"
 

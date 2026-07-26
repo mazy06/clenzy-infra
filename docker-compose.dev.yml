@@ -198,6 +198,10 @@ services:
     environment:
       KAFKA_CLUSTERS_0_NAME: clenzy-dev
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: clenzy-kafka:9092
+      # Ecriture VOLONTAIREMENT laissee active en local : produire un event de test est un
+      # usage de developpement legitime, et le broker n'est joignable que depuis la machine.
+      # La production est en revanche en KAFKA_CLUSTERS_0_READONLY: "true" (audit 2026-07,
+      # P5-01) — ne pas "aligner" la prod sur ce fichier.
     depends_on:
       kafka:
         condition: service_healthy
