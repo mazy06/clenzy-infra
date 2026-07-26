@@ -150,15 +150,15 @@ jobs:
             VALIDATE_RC=0
 
             echo ""
-            echo "[1/4] liquibase status --verbose"
+            echo "[1/6] liquibase status --verbose"
             run_liquibase status --verbose 2>&1 | tee "$STATUS_OUT" || STATUS_RC=$?
 
             echo ""
-            echo "[2/4] liquibase validate"
+            echo "[2/6] liquibase validate"
             run_liquibase validate 2>&1 | tee "$VALIDATE_OUT" || VALIDATE_RC=$?
 
             echo ""
-            echo "[3/4] databasechangelog metrics"
+            echo "[3/6] databasechangelog metrics"
             TOTAL=$($DC exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
               "SELECT count(*) FROM databasechangelog;" 2>/dev/null | tr -d '[:space:]' || echo "?")
             LAST_DATE=$($DC exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
@@ -179,7 +179,7 @@ jobs:
             fi
 
             echo ""
-            echo "[4/4] controles d'integrite pre-migration (lecture seule)"
+            echo "[4/6] controles d'integrite pre-migration (lecture seule)"
             # Le changeset 0361 pose des contraintes UNIQUE sur payment_transactions et
             # REFUSE de s'appliquer si des doublons existent — un changeset qui echoue
             # empeche l'application de demarrer. Ces deux requetes disent, AVANT tout
@@ -220,6 +220,50 @@ jobs:
                     GROUP BY idempotency_key HAVING count(*) > 1 ORDER BY occurrences DESC;" 2>&1 || true
               fi
             fi
+
+            echo ""
+            echo "[5/6] role applicatif non-superuser (plan REM-T-02)"
+            # Repond a trois questions, dans l'ordre du deploiement :
+            #   1. le role existe-t-il, et est-il bien NOSUPERUSER / NOBYPASSRLS ?
+            #      (un superuser contournerait la RLS meme posee et FORCEE)
+            #   2. le changeset 0362 lui a-t-il accorde ses privileges DML ?
+            #   3. l'application s'y connecte-t-elle deja (etape 2 effective) ?
+            # Lecture seule.
+            ROLE_INFO=$($DC exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
+              "SELECT rolsuper || '|' || rolbypassrls || '|' || rolcanlogin \
+                 FROM pg_roles WHERE rolname = 'clenzy_app';" 2>/dev/null | tr -d '[:space:]' || echo "")
+
+            if [ -z "$ROLE_INFO" ]; then
+              echo "Role clenzy_app          : ABSENT — etape 1 non effectuee"
+              echo "                           (poser CLENZY_APP_DB_PASSWORD dans le .env,"
+              echo "                            puis deployer avec force_env_sync=true)"
+            else
+              R_SUPER=$(echo "$ROLE_INFO" | cut -d'|' -f1)
+              R_BYPASS=$(echo "$ROLE_INFO" | cut -d'|' -f2)
+              R_LOGIN=$(echo "$ROLE_INFO" | cut -d'|' -f3)
+              echo "Role clenzy_app          : present"
+              echo "  rolsuper               : $R_SUPER  (attendu f)"
+              echo "  rolbypassrls           : $R_BYPASS  (attendu f)"
+              echo "  rolcanlogin            : $R_LOGIN  (attendu t)"
+              if [ "$R_SUPER" = "t" ] || [ "$R_BYPASS" = "t" ]; then
+                echo "  ATTENTION : ce role contournerait la RLS. Activer la RLS dans cet"
+                echo "              etat donnerait une protection purement illusoire."
+              fi
+
+              GRANTS=$($DC exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
+                "SELECT count(DISTINCT table_name) FROM information_schema.role_table_grants \
+                  WHERE grantee = 'clenzy_app' AND privilege_type = 'SELECT';" 2>/dev/null | tr -d '[:space:]' || echo "?")
+              echo "  tables lisibles        : $GRANTS"
+              if [ "$GRANTS" = "0" ]; then
+                echo "  → privileges non accordes : le changeset 0362 n'est pas encore deploye."
+                echo "    NE PAS basculer l'application tant que ce compteur est a 0."
+              fi
+            fi
+
+            APP_CONN=$($DC exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
+              "SELECT coalesce(string_agg(DISTINCT usename, ', '), 'aucune') \
+                 FROM pg_stat_activity WHERE datname = '$POSTGRES_DB' AND usename IS NOT NULL;" 2>/dev/null || echo "?")
+            echo "Comptes connectes a la base : $APP_CONN"
 
             # Parse pending count from `status` output (line "X changesets have not been applied")
             PENDING=$(grep -oE '^[0-9]+ changesets? have not been applied' "$STATUS_OUT" | grep -oE '^[0-9]+' | head -1 || true)
@@ -271,7 +315,7 @@ jobs:
             #   503 → un indicator est DOWN → declencher PMS Server Diag
             #   non-joignable → app crashee ou en restart-loop
             echo ""
-            echo "[4/4] LiquibaseHealthIndicator sanity check"
+            echo "[6/6] LiquibaseHealthIndicator sanity check"
 
             HEALTH_CODE=$($DC exec -T pms-server sh -c \
               "curl -sf -o /dev/null -w '%{http_code}' --max-time 5 \
