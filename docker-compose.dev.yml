@@ -327,6 +327,11 @@ services:
       # Jasypt (chiffrement tokens Airbnb en base)
       JASYPT_ENCRYPTOR_PASSWORD: ${JASYPT_ENCRYPTOR_PASSWORD:-dev-jasypt-secret-key}
       # JaCoCo — chemin vers le rapport monte en volume
+      # Instrumentation de mesure RLS (plan REM-T-01) : recense les requetes qui
+      # echapperaient a la Row-Level Security. Utile en dev pour reperer les chemins
+      # sans contexte tenant au moment ou on les ecrit, pas six mois plus tard.
+      # Nom SANS tirets : Spring supprime ceux de `audit-missing-guc`.
+      CLENZY_SECURITY_RLS_AUDITMISSINGGUC: ${CLENZY_SECURITY_RLS_AUDITMISSINGGUC:-false}
       CLENZY_JACOCO_REPORT_PATH: /app/jacoco/jacoco.xml
       # WhatsApp OpenWA (test relais) — instance lancee separement (cf. openwa/).
       # base-url via host.docker.internal car OpenWA expose 127.0.0.1:2785 sur l'hote (Docker Desktop Mac).
@@ -394,6 +399,34 @@ services:
       clenzy-network:
         aliases:
           - clenzy-frontend
+
+  # ==========================================
+  # SITE MARKETING BAITLY (vitrine produit)
+  # ==========================================
+  # Distinct de la landing page Clenzy historique (port 8080) : les deux
+  # coexistent, aucune n'ecrase l'autre.
+  #
+  # Reutilise le Dockerfile.dev ET le volume node_modules du pms-client : meme
+  # package.json, meme arbre de dependances. Un second volume ferait ~460 MB de
+  # doublon — exactement la fuite disque documentee sur le service ci-dessus.
+  # Seule la config Vite change (vite.site.config.ts, qui sert client/site).
+  baitly-site:
+    build:
+      context: ../clenzy/client
+      dockerfile: Dockerfile.dev
+    container_name: baitly-site-dev
+    command: ["npm", "run", "dev:site", "--", "--host", "0.0.0.0"]
+    ports:
+      - "3005:3005"
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+    volumes:
+      - ../clenzy/client:/app
+      - frontend-node-modules-dev:/app/node_modules
+    networks:
+      clenzy-network:
+        aliases:
+          - baitly-site
 
   # ==========================================
   # MONITORING (Prometheus + Grafana)
