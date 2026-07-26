@@ -332,6 +332,9 @@ services:
       # sans contexte tenant au moment ou on les ecrit, pas six mois plus tard.
       # Nom SANS tirets : Spring supprime ceux de `audit-missing-guc`.
       CLENZY_SECURITY_RLS_AUDITMISSINGGUC: ${CLENZY_SECURITY_RLS_AUDITMISSINGGUC:-false}
+      # Sans ce flag, l'aspect est inerte et l'audit ci-dessus signale tout : la mesure
+      # n'aurait aucun sens. Sans risque tant que le contexte Liquibase `rls` est inactif.
+      CLENZY_SECURITY_RLS_ENABLED: ${CLENZY_SECURITY_RLS_ENABLED:-false}
       CLENZY_JACOCO_REPORT_PATH: /app/jacoco/jacoco.xml
       # WhatsApp OpenWA (test relais) — instance lancee separement (cf. openwa/).
       # base-url via host.docker.internal car OpenWA expose 127.0.0.1:2785 sur l'hote (Docker Desktop Mac).
