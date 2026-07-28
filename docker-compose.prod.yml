@@ -521,6 +521,13 @@ services:
       # Jasypt (chiffrement tokens Airbnb en base)
       JASYPT_ENCRYPTOR_PASSWORD: ${JASYPT_ENCRYPTOR_PASSWORD}
       # Channex (Channel Manager — distribution OTAs)
+      # Interrupteur global. DEFAUT false EN PROD tant que le contrat de
+      # partenariat n'est pas signe : sans acces au hub, les 5 schedulers Channex
+      # echouent en boucle (~270 appels/jour, "Channex auth failed: unauthorized").
+      # A false, aucun scheduler n'est instancie ; le webhook entrant et les
+      # endpoints admin restent cables. Reactivation le jour de la signature :
+      # CHANNEX_ENABLED=true dans le .env du VPS (geste explicite, pas un defaut).
+      CHANNEX_ENABLED: ${CHANNEX_ENABLED:-false}
       CHANNEX_BASE_URL: ${CHANNEX_BASE_URL:-https://app.channex.io/api/v1}
       CHANNEX_API_KEY: ${CHANNEX_API_KEY:-}
       CHANNEX_WEBHOOK_SECRET: ${CHANNEX_WEBHOOK_SECRET:-}
