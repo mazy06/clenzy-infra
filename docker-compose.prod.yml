@@ -521,6 +521,13 @@ services:
       # Jasypt (chiffrement tokens Airbnb en base)
       JASYPT_ENCRYPTOR_PASSWORD: ${JASYPT_ENCRYPTOR_PASSWORD}
       # Channex (Channel Manager — distribution OTAs)
+      # Interrupteur global. DEFAUT false EN PROD tant que le contrat de
+      # partenariat n'est pas signe : sans acces au hub, les 5 schedulers Channex
+      # echouent en boucle (~270 appels/jour, "Channex auth failed: unauthorized").
+      # A false, aucun scheduler n'est instancie ; le webhook entrant et les
+      # endpoints admin restent cables. Reactivation le jour de la signature :
+      # CHANNEX_ENABLED=true dans le .env du VPS (geste explicite, pas un defaut).
+      CHANNEX_ENABLED: ${CHANNEX_ENABLED:-false}
       CHANNEX_BASE_URL: ${CHANNEX_BASE_URL:-https://app.channex.io/api/v1}
       CHANNEX_API_KEY: ${CHANNEX_API_KEY:-}
       CHANNEX_WEBHOOK_SECRET: ${CHANNEX_WEBHOOK_SECRET:-}
@@ -542,6 +549,10 @@ services:
       # echapperaient a la Row-Level Security AVANT de l'activer. Sans contexte tenant,
       # une requete ne leve pas d'erreur — elle renvoie zero ligne. Chaque ligne
       # RLS/AUDIT des logs designe un chemin a corriger.
+      # NE PAS repasser a false apres l'activation : le role change, il ne disparait pas.
+      # Une requete non scopee ne levera toujours aucune exception — cette instrumentation
+      # devient le SEUL detecteur des regressions ajoutees plus tard. Cout quasi nul : le
+      # chemin normal (requete scopee) sort avant tout traitement.
       # Nom SANS tirets : Spring supprime ceux de `audit-missing-guc` (meme regle que
       # CLENZY_SECURITY_FIELDENCRYPTION_FAILONDECRYPTERROR ci-dessus).
       CLENZY_SECURITY_RLS_AUDITMISSINGGUC: ${CLENZY_SECURITY_RLS_AUDITMISSINGGUC:-false}
