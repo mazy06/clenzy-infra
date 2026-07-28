@@ -583,6 +583,44 @@ services:
       # Defauts vides => BrevoContactService.isConfigured()=false => sync ignoree (no-op).
       BREVO_API_KEY: ${BREVO_API_KEY:-}
       BREVO_WAITLIST_LIST_ID: ${BREVO_WAITLIST_LIST_ID:-0}
+      # Offload du stockage vers OVH Object Storage (S3-compatible, client MinIO).
+      #
+      # Les defauts reproduisent EXACTEMENT ceux d'application-prod.yml : declarer ces
+      # variables ici ne change rien au comportement, cela rend seulement la bascule
+      # pilotable depuis .env sans reconstruire l'image.
+      #
+      # ATTENTION : ces flags n'acceptent QUE les valeurs listees. Une valeur inconnue
+      # (ex. l'ancien "s3") ne laisse AUCUNE implementation active et empeche le
+      # demarrage — comportement verrouille par PhotoStorageWiringTest.
+      #
+      # Ordre de bascule (ne PAS tout activer d'un coup) :
+      #   1. renseigner endpoint / cles / buckets, en laissant STORAGE_PHOTOS=bytea
+      #   2. POST /api/admin/storage/migrate-photos (non destructif : le BYTEA est conserve)
+      #   3. verifier, puis passer STORAGE_PHOTOS=object
+      #   4. purger le BYTEA seulement apres validation
+      #
+      # STORAGE_DOCUMENTS : `object` est utilisable D'EMBLEE sur une instance neuve.
+      # Le seul obstacle est l'existant — aucun job de migration disque -> S3 n'existe,
+      # donc sur une instance qui a deja produit des documents, basculer rendrait
+      # illisible tout ce qui est deja sur le volume. Sur un VPS neuf (volumes vides),
+      # la question ne se pose pas : activer des le depart evite d'avoir a migrer plus tard.
+      #
+      # Portee reelle du flag : il ne couvre que DocumentStorageService (documents generes)
+      # et ReceiptStorageService (recus). ContactFileStorageService et
+      # DocumentTemplateStorageService restent disque-only par conception — le second
+      # expose un Path filesystem exige par XDocReport. Les volumes contact-uploads-prod
+      # et document-templates-prod restent donc necessaires meme en mode `object`.
+      STORAGE_PHOTOS: ${STORAGE_PHOTOS:-bytea}
+      STORAGE_DOCUMENTS: ${STORAGE_DOCUMENTS:-disk}
+      STORAGE_INTERVENTION_PHOTOS: ${STORAGE_INTERVENTION_PHOTOS:-bytea}
+      STORAGE_BINARY_ASSETS: ${STORAGE_BINARY_ASSETS:-postgres}
+      STORAGE_OBJECT_ENDPOINT: ${STORAGE_OBJECT_ENDPOINT:-}
+      STORAGE_OBJECT_REGION: ${STORAGE_OBJECT_REGION:-}
+      STORAGE_OBJECT_ACCESS_KEY: ${STORAGE_OBJECT_ACCESS_KEY:-}
+      STORAGE_OBJECT_SECRET_KEY: ${STORAGE_OBJECT_SECRET_KEY:-}
+      STORAGE_OBJECT_BUCKET_MEDIA: ${STORAGE_OBJECT_BUCKET_MEDIA:-}
+      STORAGE_OBJECT_BUCKET_DOCUMENTS: ${STORAGE_OBJECT_BUCKET_DOCUMENTS:-}
+      STORAGE_OBJECT_BUCKET_ARCHIVE: ${STORAGE_OBJECT_BUCKET_ARCHIVE:-}
       # CORS
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://${APP_DOMAIN}}
       SERVER_PORT: 8080
