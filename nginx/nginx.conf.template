@@ -144,7 +144,7 @@ http {
     # ==========================================
     server {
         listen 80;
-        server_name ${DOMAIN} www.${DOMAIN} ${APP_DOMAIN} ${AUTH_DOMAIN} ${MONITORING_DOMAIN} ${PROMETHEUS_DOMAIN} ${KAFKA_UI_DOMAIN};
+        server_name ${DOMAIN} www.${DOMAIN} ${APP_DOMAIN} ${AUTH_DOMAIN} ${MONITORING_DOMAIN} ${PROMETHEUS_DOMAIN} ${KAFKA_UI_DOMAIN} ${SITE_DOMAIN} www.${SITE_DOMAIN};
 
         # Let's Encrypt ACME challenge (doit rester accessible en HTTP)
         location /.well-known/acme-challenge/ {
@@ -202,6 +202,53 @@ http {
         }
 
         # Sécurité : bloquer les fichiers sensibles
+        location ~ /\. { deny all; }
+        location ~ \.(env|log|sql|bak)$ { deny all; }
+    }
+
+    # ==========================================
+    # SITE MARKETING BAITLY — ${SITE_DOMAIN}
+    # ==========================================
+    # Le certificat est le meme SAN que les autres vhosts (CERTBOT_CERT_NAME) :
+    # tant que ${SITE_DOMAIN} n'y est pas ajoute, nginx demarre normalement mais
+    # les navigateurs signalent un certificat qui ne couvre pas le domaine.
+    # Sequence : DNS -> extension du certificat -> reload nginx.
+    server {
+        listen 443 ssl;
+        http2 on;
+        server_name ${SITE_DOMAIN} www.${SITE_DOMAIN};
+
+        ssl_certificate /etc/letsencrypt/live/${CERTBOT_CERT_NAME}/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/${CERTBOT_CERT_NAME}/privkey.pem;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_ciphers ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384;
+        ssl_prefer_server_ciphers off;
+        ssl_session_cache shared:SSL:10m;
+        ssl_session_timeout 10m;
+
+        location / {
+            limit_req zone=general burst=50 nodelay;
+
+            proxy_pass http://baitly-site;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+
+            location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+                proxy_pass http://baitly-site;
+                expires 1y;
+                add_header Cache-Control "public, immutable";
+                access_log off;
+            }
+        }
+
+        location /health {
+            access_log off;
+            return 200 "healthy\n";
+            add_header Content-Type text/plain;
+        }
+
         location ~ /\. { deny all; }
         location ~ \.(env|log|sql|bak)$ { deny all; }
     }
