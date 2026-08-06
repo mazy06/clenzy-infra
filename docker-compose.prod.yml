@@ -511,8 +511,15 @@ services:
       SPRING_LIQUIBASE_PASSWORD: ${POSTGRES_PASSWORD}
       # DataSource Replica (pour @Transactional readOnly — fallback sur primary via pgBouncer si non configure)
       SPRING_DATASOURCE_REPLICA_URL: ${SPRING_DATASOURCE_REPLICA_URL:-jdbc:postgresql://pgbouncer:6432/${POSTGRES_DB}?prepareThreshold=0&sslmode=disable}
-      SPRING_DATASOURCE_REPLICA_USERNAME: ${POSTGRES_USER}
-      SPRING_DATASOURCE_REPLICA_PASSWORD: ${POSTGRES_PASSWORD}
+      # MEME bascule que la datasource primaire, et pour une raison de securite, pas
+      # de symetrie : ReadWriteRoutingDataSource envoie TOUTE transaction
+      # @Transactional(readOnly = true) sur cette datasource. La laisser sur le compte
+      # proprietaire pendant que la primaire passe sur clenzy_app rendrait la RLS
+      # aveugle sur le chemin de LECTURE — celui-la meme ou vivaient les IDOR de
+      # l'audit (F1-01 est un GET). Un superuser contourne la RLS meme FORCEE, c'est
+      # demontre par RlsEnforcementIT#superuserBypassesRls_documentsPrerequisite.
+      SPRING_DATASOURCE_REPLICA_USERNAME: ${CLENZY_APP_DB_USER:-${POSTGRES_USER}}
+      SPRING_DATASOURCE_REPLICA_PASSWORD: ${CLENZY_APP_DB_USER_PASSWORD:-${POSTGRES_PASSWORD}}
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: https://${AUTH_DOMAIN}/realms/clenzy
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://clenzy-keycloak:8080/realms/clenzy/protocol/openid-connect/certs
       # JWT audience attendue (defense-in-depth contre cross-client intra-realm).
