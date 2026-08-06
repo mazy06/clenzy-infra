@@ -575,7 +575,13 @@ services:
       # chemin normal (requete scopee) sort avant tout traitement.
       # Nom SANS tirets : Spring supprime ceux de `audit-missing-guc` (meme regle que
       # CLENZY_SECURITY_FIELDENCRYPTION_FAILONDECRYPTERROR ci-dessus).
-      CLENZY_SECURITY_RLS_AUDITMISSINGGUC: ${CLENZY_SECURITY_RLS_AUDITMISSINGGUC:-false}
+      #
+      # DEFAUT PASSE A `true` (2026-08-06) — ouverture de la phase INVENTAIRE du
+      # runbook. Tant que le contexte Liquibase `rls` reste absent, aucune politique
+      # n'existe : la mesure ne peut rien casser, et c'est le seul moyen de faire de
+      # l'activation un constat plutot qu'un pari. Le `.env` du VPS garde la main —
+      # y poser la variable a `false` coupe la mesure sans toucher a ce fichier.
+      CLENZY_SECURITY_RLS_AUDITMISSINGGUC: ${CLENZY_SECURITY_RLS_AUDITMISSINGGUC:-true}
       # Pose des GUC de contexte tenant (app.current_org / app.bypass_rls).
       #
       # ⚠️ INDISPENSABLE POUR QUE L'INSTRUMENTATION CI-DESSUS MESURE QUELQUE CHOSE.
@@ -589,7 +595,13 @@ services:
       #
       # C'est aussi l'ordre d'activation a respecter le jour venu : enabled=true d'abord,
       # contexte `rls` ensuite. L'inverse viderait les ecrans.
-      CLENZY_SECURITY_RLS_ENABLED: ${CLENZY_SECURITY_RLS_ENABLED:-false}
+      #
+      # DEFAUT PASSE A `true` (2026-08-06), en meme temps que l'instrumentation
+      # ci-dessus dont il est la condition : sans GUC posee, l'audit signalerait TOUTES
+      # les requetes sur les cinq tables et l'inventaire serait sans valeur. Le contexte
+      # Liquibase `rls` reste absent de la prod — les politiques ne sont donc PAS
+      # appliquees et personne ne lit ces GUC.
+      CLENZY_SECURITY_RLS_ENABLED: ${CLENZY_SECURITY_RLS_ENABLED:-true}
       # Airbnb Integration
       AIRBNB_CLIENT_ID: ${AIRBNB_CLIENT_ID:-}
       AIRBNB_CLIENT_SECRET: ${AIRBNB_CLIENT_SECRET:-}
