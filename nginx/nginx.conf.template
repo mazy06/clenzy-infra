@@ -201,8 +201,13 @@ http {
             add_header Content-Type text/plain;
         }
 
-        # Sécurité : bloquer les fichiers sensibles
-        location ~ /\. { deny all; }
+        # Sécurité : bloquer les fichiers sensibles.
+        # Exception /.well-known : c'est un chemin PUBLIC normalisé (RFC 8615).
+        # Sans la négation, la landing renvoyait 403 sur /.well-known/api-catalog,
+        # /.well-known/oauth-protected-resource et /.well-known/agent-skills/,
+        # rendant la découverte par les agents impossible.
+        # Même forme que le vhost Keycloak plus bas dans ce fichier.
+        location ~ /\.(?!well-known) { deny all; }
         location ~ \.(env|log|sql|bak)$ { deny all; }
     }
 
