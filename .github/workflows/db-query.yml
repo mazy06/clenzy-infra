@@ -1,0 +1,103 @@
+# ===========================================
+# Baitly - DB Query (lecture seule)
+# ===========================================
+# Repond a un besoin recurrent : consulter l'etat des donnees en production
+# apres un deploiement, sans rien modifier.
+#
+# `DB Migration` executait deja du SQL arbitraire, mais il redemarre
+# `pms-server` a chaque appel — un `SELECT` y coutait donc une coupure de
+# service. `DB Status`, lui, ne lit que l'etat Liquibase, jamais les donnees.
+# Ce workflow comble l'ecart : une requete, aucun effet de bord.
+#
+# Garde-fous :
+#   - Seuls SELECT et WITH sont acceptes ; toute autre instruction est refusee
+#     avant d'atteindre la base. Le workflow ne peut donc pas servir de porte
+#     derobee pour ecrire en prod, ce que `DB Migration` reste seul a faire.
+#   - Session PostgreSQL en lecture seule (`default_transaction_read_only`) :
+#     meme une requete qui passerait le filtre ne pourrait rien ecrire.
+#   - Aucun `restart`, aucun `up -d`.
+#   - Resultat tronque : une requete large ne doit pas deverser la base dans
+#     des logs GitHub conserves 90 jours.
+#
+# INJECTION : la requete n'est JAMAIS interpolee dans le script. Elle transite
+# par une variable d'environnement (`env:` puis `envs:` de ssh-action) et n'est
+# lue qu'en `"$SQL_QUERY"`, comme dans `db-migrate.yml`. Une interpolation
+# directe `${{ inputs.sql }}` dans le `script:` permettrait de sortir de la
+# chaine et d'executer du shell arbitraire sur le VPS.
+#
+# Securite : les inputs workflow_dispatch ne sont declenchables que par les
+# users avec write access. Aucune entree provenant de github.event.* n'est
+# utilisee.
+
+name: DB Query
+
+on:
+  workflow_dispatch:
+    inputs:
+      sql:
+        description: 'Requete SELECT a executer (lecture seule)'
+        required: true
+        type: string
+      limit:
+        description: 'Nombre maximum de lignes affichees'
+        required: false
+        default: '100'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  query:
+    name: Read-only SQL query
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Run read-only query on VPS
+        uses: appleboy/ssh-action@v1
+        env:
+          # Passage par l'environnement, jamais par interpolation dans le script.
+          INFRA_DIR_VALUE: ${{ vars.VPS_INFRA_DIR }}
+          SQL_QUERY: ${{ inputs.sql }}
+          ROW_LIMIT: ${{ inputs.limit || '100' }}
+        with:
+          host: ${{ secrets.VPS_HOST != '' && secrets.VPS_HOST || vars.VPS_HOST }}
+          username: ${{ secrets.VPS_USER != '' && secrets.VPS_USER || vars.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          envs: INFRA_DIR_VALUE,SQL_QUERY,ROW_LIMIT
+          command_timeout: 3m
+          script: |
+            set -e
+
+            INFRA_DIR="${INFRA_DIR_VALUE:-$HOME/clenzy-infra}"
+            cd "$INFRA_DIR"
+            set -a
+            . ./.env
+            set +a
+
+            # Refus avant execution : on ne compte pas sur la session read-only
+            # seule, pour que le message dise ce qui a ete refuse.
+            NORMALIZED=$(echo "$SQL_QUERY" | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//')
+            case "$NORMALIZED" in
+              select*|with*) ;;
+              *)
+                echo "Refuse : seules les requetes SELECT / WITH sont acceptees."
+                echo "Pour une ecriture, utiliser le workflow 'DB Migration'."
+                exit 1
+                ;;
+            esac
+
+            echo "=========================================="
+            echo "DB Query (lecture seule)"
+            echo "=========================================="
+
+            docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
+              psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" \
+                -v ON_ERROR_STOP=1 \
+                -c "SET default_transaction_read_only = on; $SQL_QUERY" \
+              | head -n "$ROW_LIMIT"
+
+            echo "=========================================="
+            echo "Termine — aucune ecriture, aucun redemarrage."

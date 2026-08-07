@@ -336,6 +336,15 @@ services:
       # n'aurait aucun sens. Sans risque tant que le contexte Liquibase `rls` est inactif.
       CLENZY_SECURITY_RLS_ENABLED: ${CLENZY_SECURITY_RLS_ENABLED:-false}
       CLENZY_JACOCO_REPORT_PATH: /app/jacoco/jacoco.xml
+      # Channex (channel manager). Sans ces variables, ChannexClient rejette TOUT
+      # appel avant meme d'ouvrir une socket ("API key not configured") : le
+      # diagnostic, le teardown et les push echouent silencieusement en dev, ce
+      # qui se lit comme une property orpheline cote UI. Les valeurs viennent de
+      # .env.dev (cle "Baitly PMS (dev)" du hub Channex).
+      CHANNEX_ENABLED: ${CHANNEX_ENABLED:-false}
+      CHANNEX_BASE_URL: ${CHANNEX_BASE_URL:-https://app.channex.io/api/v1}
+      CHANNEX_API_KEY: ${CHANNEX_API_KEY:-}
+      CHANNEX_WEBHOOK_SECRET: ${CHANNEX_WEBHOOK_SECRET:-}
       # WhatsApp OpenWA (test relais) — instance lancee separement (cf. openwa/).
       # base-url via host.docker.internal car OpenWA expose 127.0.0.1:2785 sur l'hote (Docker Desktop Mac).
       # La master key OpenWA est stockee CHIFFREE EN BDD (saisie depuis l'UI), plus en env.
