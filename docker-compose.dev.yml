@@ -345,6 +345,10 @@ services:
       CHANNEX_BASE_URL: ${CHANNEX_BASE_URL:-https://app.channex.io/api/v1}
       CHANNEX_API_KEY: ${CHANNEX_API_KEY:-}
       CHANNEX_WEBHOOK_SECRET: ${CHANNEX_WEBHOOK_SECRET:-}
+      # Certification PMS Channex : autorise le push ARI sans canal OTA branche.
+      # Sans lui, ChannexSyncService court-circuite (« skip: no active OTA channel »)
+      # et aucun task ID n'est renvoye. Defaut false — NE JAMAIS activer en prod.
+      CHANNEX_ALLOW_PUSH_WITHOUT_ACTIVE_OTA: ${CHANNEX_ALLOW_PUSH_WITHOUT_ACTIVE_OTA:-false}
       # WhatsApp OpenWA (test relais) — instance lancee separement (cf. openwa/).
       # base-url via host.docker.internal car OpenWA expose 127.0.0.1:2785 sur l'hote (Docker Desktop Mac).
       # La master key OpenWA est stockee CHIFFREE EN BDD (saisie depuis l'UI), plus en env.
