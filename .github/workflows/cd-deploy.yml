@@ -84,9 +84,12 @@ jobs:
     environment: production
 
     steps:
-      - name: Checkout infrastructure
-        uses: actions/checkout@v4
-
+      # PAS de actions/checkout : aucune etape de ce job ne lit le depot — c'est le
+      # VPS qui fait son propre git fetch/reset (script ci-dessous). Chaque action du
+      # marketplace est une resolution reseau de plus au demarrage du job, et donc un
+      # point de panne : l'incident Actions du 2026-08-06 a tue quatre deploiements
+      # sur "Getting action download info / Service Unavailable", avant meme la
+      # premiere etape.
       - name: Validate required deployment secrets
         env:
           VPS_HOST: ${{ secrets.VPS_HOST != '' && secrets.VPS_HOST || vars.VPS_HOST }}
@@ -113,9 +116,17 @@ jobs:
             exit 1
           fi
 
+      # Appel `ssh` DIRECT, sans action du marketplace. La resolution des
+      # actions est le premier point de panne d'un job : l'incident Actions du
+      # 2026-08-06 a tue quatre deploiements sur « Getting action download info
+      # / Service Unavailable », avant meme la premiere etape. Le script distant
+      # ci-dessous est INCHANGE — seul le transport l'est.
       - name: Deploy to VPS via SSH
-        uses: appleboy/ssh-action@v1
         env:
+          VPS_HOST: ${{ secrets.VPS_HOST != '' && secrets.VPS_HOST || vars.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER != '' && secrets.VPS_USER || vars.VPS_USER }}
+          VPS_PORT: ${{ secrets.VPS_PORT || 22 }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
           DEPLOY_INFRA_DIR: ${{ vars.VPS_INFRA_DIR }}
           DEPLOY_REPO: ${{ github.repository }}
           DEPLOY_GHCR_OWNER: ${{ github.repository_owner }}
@@ -130,75 +141,91 @@ jobs:
           DEPLOY_MODE: ${{ github.event.client_payload.deploy_mode || github.event.inputs.deploy_mode || 'update' }}
           DEPLOY_SERVICES: ${{ github.event.client_payload.services || github.event.client_payload.service || github.event.inputs.services || '' }}
           DEPLOY_FORCE_RECREATE: ${{ github.event.client_payload.force_recreate || github.event.inputs.force_recreate || 'false' }}
-        with:
-          host: ${{ secrets.VPS_HOST != '' && secrets.VPS_HOST || vars.VPS_HOST }}
-          username: ${{ secrets.VPS_USER != '' && secrets.VPS_USER || vars.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_PORT || 22 }}
-          envs: DEPLOY_INFRA_DIR,DEPLOY_REPO,DEPLOY_GHCR_OWNER,DEPLOY_GHCR_TOKEN,DEPLOY_GIT_TOKEN,DEPLOY_APP_GIT_TOKEN,DEPLOY_ENV_B64,DEPLOY_FORCE_ENV,DEPLOY_MODE,DEPLOY_SERVICES,DEPLOY_FORCE_RECREATE
-          command_timeout: 60m
-          script: |
-            set -e
-            echo "=========================================="
-            echo "🚀 Clenzy — Deploiement Infrastructure"
-            echo "=========================================="
+        run: |
+          set -euo pipefail
 
-            INFRA_DIR="${DEPLOY_INFRA_DIR:-$HOME/clenzy-infra}"
-            REPO_URL="https://github.com/${DEPLOY_REPO}.git"
-            REPO_URL_AUTH="https://x-access-token:${DEPLOY_GIT_TOKEN}@github.com/${DEPLOY_REPO}.git"
+          cle="$(mktemp)"
+          trap 'rm -f "$cle"' EXIT
+          printf '%s\n' "$VPS_SSH_KEY" > "$cle"
+          chmod 600 "$cle"
 
-            if [ ! -d "$INFRA_DIR/.git" ]; then
-              echo "📁 Dossier infra absent, bootstrap du repo..."
-              mkdir -p "$(dirname "$INFRA_DIR")"
-              git clone "$REPO_URL_AUTH" "$INFRA_DIR"
+          # Les variables partent en tete du flux, quotees par printf %q : elles
+          # n'apparaissent donc jamais sur la ligne de commande distante (ps) ni
+          # dans le journal du runner.
+          {
+            for v in DEPLOY_INFRA_DIR DEPLOY_REPO DEPLOY_GHCR_OWNER DEPLOY_GHCR_TOKEN DEPLOY_GIT_TOKEN DEPLOY_APP_GIT_TOKEN DEPLOY_ENV_B64 DEPLOY_FORCE_ENV DEPLOY_MODE DEPLOY_SERVICES DEPLOY_FORCE_RECREATE; do
+              printf 'export %s=%q\n' "$v" "${!v-}"
+            done
+            cat <<'SCRIPT_DISTANT'
+          set -e
+          echo "=========================================="
+          echo "🚀 Clenzy — Deploiement Infrastructure"
+          echo "=========================================="
+
+          INFRA_DIR="${DEPLOY_INFRA_DIR:-$HOME/clenzy-infra}"
+          REPO_URL="https://github.com/${DEPLOY_REPO}.git"
+          REPO_URL_AUTH="https://x-access-token:${DEPLOY_GIT_TOKEN}@github.com/${DEPLOY_REPO}.git"
+
+          if [ ! -d "$INFRA_DIR/.git" ]; then
+            echo "📁 Dossier infra absent, bootstrap du repo..."
+            mkdir -p "$(dirname "$INFRA_DIR")"
+            git clone "$REPO_URL_AUTH" "$INFRA_DIR"
+          fi
+
+          cd "$INFRA_DIR"
+
+          echo "🔐 Connexion au GitHub Container Registry..."
+          echo "$DEPLOY_GHCR_TOKEN" | docker login ghcr.io -u "$DEPLOY_GHCR_OWNER" --password-stdin
+
+          echo "📥 Mise a jour du repo infrastructure..."
+          git remote set-url origin "$REPO_URL_AUTH"
+          git fetch origin production
+          git reset --hard origin/production
+          git remote set-url origin "$REPO_URL"
+
+          # --- Provisioning .env ---
+          if [ "$DEPLOY_FORCE_ENV" = "true" ]; then
+            if [ -z "$DEPLOY_ENV_B64" ]; then
+              echo "❌ FORCE_ENV_SYNC=true mais secret PROD_ENV_FILE_B64 absent."
+              exit 1
             fi
-
-            cd "$INFRA_DIR"
-
-            echo "🔐 Connexion au GitHub Container Registry..."
-            echo "$DEPLOY_GHCR_TOKEN" | docker login ghcr.io -u "$DEPLOY_GHCR_OWNER" --password-stdin
-
-            echo "📥 Mise a jour du repo infrastructure..."
-            git remote set-url origin "$REPO_URL_AUTH"
-            git fetch origin production
-            git reset --hard origin/production
-            git remote set-url origin "$REPO_URL"
-
-            # --- Provisioning .env ---
-            if [ "$DEPLOY_FORCE_ENV" = "true" ]; then
-              if [ -z "$DEPLOY_ENV_B64" ]; then
-                echo "❌ FORCE_ENV_SYNC=true mais secret PROD_ENV_FILE_B64 absent."
+            if [ -f ".env" ]; then
+              ts="$(date +%Y%m%d-%H%M%S)"
+              cp -f .env ".env.bak.${ts}"
+              chmod 600 ".env.bak.${ts}" || true
+              echo "💾 Backup .env -> .env.bak.${ts}"
+            fi
+            echo "📝 Synchronisation forcee de .env..."
+            umask 077
+            printf '%s' "$DEPLOY_ENV_B64" | base64 -d > .env
+            chmod 600 .env
+          else
+            if [ ! -f ".env" ]; then
+              if [ -n "$DEPLOY_ENV_B64" ]; then
+                echo "📝 Creation de .env depuis secret..."
+                umask 077
+                printf '%s' "$DEPLOY_ENV_B64" | base64 -d > .env
+              else
+                echo "❌ Fichier .env absent et aucun secret de bootstrap."
                 exit 1
               fi
-              if [ -f ".env" ]; then
-                ts="$(date +%Y%m%d-%H%M%S)"
-                cp -f .env ".env.bak.${ts}"
-                chmod 600 ".env.bak.${ts}" || true
-                echo "💾 Backup .env -> .env.bak.${ts}"
-              fi
-              echo "📝 Synchronisation forcee de .env..."
-              umask 077
-              printf '%s' "$DEPLOY_ENV_B64" | base64 -d > .env
               chmod 600 .env
-            else
-              if [ ! -f ".env" ]; then
-                if [ -n "$DEPLOY_ENV_B64" ]; then
-                  echo "📝 Creation de .env depuis secret..."
-                  umask 077
-                  printf '%s' "$DEPLOY_ENV_B64" | base64 -d > .env
-                else
-                  echo "❌ Fichier .env absent et aucun secret de bootstrap."
-                  exit 1
-                fi
-                chmod 600 .env
-              fi
             fi
+          fi
 
-            # Charger .env puis lancer le script de deploiement
-            set -a; . ./.env; set +a
-            export DEPLOY_MODE DEPLOY_SERVICES
-            chmod +x scripts/deploy.sh
-            bash scripts/deploy.sh
+          # Charger .env puis lancer le script de deploiement
+          set -a; . ./.env; set +a
+          export DEPLOY_MODE DEPLOY_SERVICES
+          chmod +x scripts/deploy.sh
+          bash scripts/deploy.sh
+          SCRIPT_DISTANT
+          } | ssh -i "$cle" \
+                -o StrictHostKeyChecking=accept-new \
+                -o UserKnownHostsFile=/dev/null \
+                -o LogLevel=ERROR \
+                -o ServerAliveInterval=30 -o ServerAliveCountMax=120 \
+                -p "${VPS_PORT:-22}" \
+                "$VPS_USER@$VPS_HOST" bash -s
 
       # Notifie l'app (notification in-app pour le staff plateforme) si le deploiement
       # echoue — y compris quand l'echec survient AVANT/PENDANT le SSH (auth/connexion VPS),

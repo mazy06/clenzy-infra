@@ -336,6 +336,33 @@ services:
       # n'aurait aucun sens. Sans risque tant que le contexte Liquibase `rls` est inactif.
       CLENZY_SECURITY_RLS_ENABLED: ${CLENZY_SECURITY_RLS_ENABLED:-false}
       CLENZY_JACOCO_REPORT_PATH: /app/jacoco/jacoco.xml
+      # Channex (channel manager). Sans ces variables, ChannexClient rejette TOUT
+      # appel avant meme d'ouvrir une socket ("API key not configured") : le
+      # diagnostic, le teardown et les push echouent silencieusement en dev, ce
+      # qui se lit comme une property orpheline cote UI. Les valeurs viennent de
+      # .env.dev (cle "Baitly PMS (dev)" du hub Channex).
+      CHANNEX_ENABLED: ${CHANNEX_ENABLED:-false}
+      CHANNEX_BASE_URL: ${CHANNEX_BASE_URL:-https://app.channex.io/api/v1}
+      CHANNEX_API_KEY: ${CHANNEX_API_KEY:-}
+      CHANNEX_WEBHOOK_SECRET: ${CHANNEX_WEBHOOK_SECRET:-}
+      # URL publique ou Channex livre ses webhooks. DOIT se terminer par
+      # /api/webhooks/channex : un enregistrement sur la racine d'un tunnel fait
+      # tomber chaque livraison en 404, et Channex finit par desactiver le
+      # webhook (cause du refus de certification du 2026-08-14). En dev, c'est
+      # une URL de tunnel, donc ephemere.
+      CHANNEX_WEBHOOK_CALLBACK_URL: ${CHANNEX_WEBHOOK_CALLBACK_URL:-}
+      # Certification PMS Channex : autorise le push ARI sans canal OTA branche.
+      # Sans lui, ChannexSyncService court-circuite (« skip: no active OTA channel »)
+      # et aucun task ID n'est renvoye. Defaut false — NE JAMAIS activer en prod.
+      CHANNEX_ALLOW_PUSH_WITHOUT_ACTIVE_OTA: ${CHANNEX_ALLOW_PUSH_WITHOUT_ACTIVE_OTA:-false}
+      # Rattrapage de l'historique des reservations par APPEL DE LISTE a la fin
+      # d'un import. A false PENDANT une certification : Channex compte chaque
+      # lecture par liste comme une reception illegitime, et c'est ce rattrapage
+      # — pas un pull manuel — qui a fait echouer le test 11 le 2026-08-15, une
+      # fois par reconnexion du canal. Defaut true : il donne son passe a une
+      # propriete fraichement connectee, le flux de revisions ne remonte pas
+      # l'anterieur.
+      CHANNEX_IMPORT_PULL_BOOKINGS: ${CHANNEX_IMPORT_PULL_BOOKINGS:-true}
       # WhatsApp OpenWA (test relais) — instance lancee separement (cf. openwa/).
       # base-url via host.docker.internal car OpenWA expose 127.0.0.1:2785 sur l'hote (Docker Desktop Mac).
       # La master key OpenWA est stockee CHIFFREE EN BDD (saisie depuis l'UI), plus en env.
