@@ -28,8 +28,11 @@ services:
       MONITORING_DOMAIN: ${MONITORING_DOMAIN:-monitoring.clenzy.fr}
       PROMETHEUS_DOMAIN: ${PROMETHEUS_DOMAIN:-prometheus.clenzy.fr}
       KAFKA_UI_DOMAIN: ${KAFKA_UI_DOMAIN:-kafka.clenzy.fr}
+      # Site marketing Baitly. Doit figurer dans NGINX_ENVSUBST_FILTER ci-dessous,
+      # sinon nginx recoit le litteral ${SITE_DOMAIN} et refuse de demarrer.
+      SITE_DOMAIN: ${SITE_DOMAIN:-baitly.ma}
       CERTBOT_CERT_NAME: ${CERTBOT_CERT_NAME:-${DOMAIN}}
-      NGINX_ENVSUBST_FILTER: ^(DOMAIN|APP_DOMAIN|AUTH_DOMAIN|MONITORING_DOMAIN|PROMETHEUS_DOMAIN|KAFKA_UI_DOMAIN|CERTBOT_CERT_NAME)$
+      NGINX_ENVSUBST_FILTER: ^(DOMAIN|APP_DOMAIN|AUTH_DOMAIN|MONITORING_DOMAIN|PROMETHEUS_DOMAIN|KAFKA_UI_DOMAIN|SITE_DOMAIN|CERTBOT_CERT_NAME)$
       NGINX_ENVSUBST_TEMPLATE_DIR: /etc/nginx/templates
       NGINX_ENVSUBST_TEMPLATE_SUFFIX: .template
       NGINX_ENVSUBST_OUTPUT_DIR: /etc/nginx
@@ -85,6 +88,23 @@ services:
       clenzy-network:
         aliases:
           - clenzy-landing
+
+  # Site marketing Baitly — app Vite distincte du PMS (client/site,
+  # vite.site.config.ts, sortie dans dist-site). Build dedie : l'image du PMS
+  # embarque des variables (API, Keycloak, Stripe) dont le site n'a pas besoin.
+  baitly-site:
+    image: ghcr.io/mazy06/clenzy-baitly-site:latest
+    build:
+      context: ../clenzy/client
+      dockerfile: Dockerfile.site
+    container_name: baitly-site-prod
+    restart: unless-stopped
+    expose:
+      - "80"
+    networks:
+      clenzy-network:
+        aliases:
+          - baitly-site
 
   # ==========================================
   # INFRASTRUCTURE (BDD, Cache, Auth)

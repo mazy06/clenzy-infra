@@ -336,6 +336,33 @@ services:
       # n'aurait aucun sens. Sans risque tant que le contexte Liquibase `rls` est inactif.
       CLENZY_SECURITY_RLS_ENABLED: ${CLENZY_SECURITY_RLS_ENABLED:-false}
       CLENZY_JACOCO_REPORT_PATH: /app/jacoco/jacoco.xml
+      # Channex (channel manager). Sans ces variables, ChannexClient rejette TOUT
+      # appel avant meme d'ouvrir une socket ("API key not configured") : le
+      # diagnostic, le teardown et les push echouent silencieusement en dev, ce
+      # qui se lit comme une property orpheline cote UI. Les valeurs viennent de
+      # .env.dev (cle "Baitly PMS (dev)" du hub Channex).
+      CHANNEX_ENABLED: ${CHANNEX_ENABLED:-false}
+      CHANNEX_BASE_URL: ${CHANNEX_BASE_URL:-https://app.channex.io/api/v1}
+      CHANNEX_API_KEY: ${CHANNEX_API_KEY:-}
+      CHANNEX_WEBHOOK_SECRET: ${CHANNEX_WEBHOOK_SECRET:-}
+      # URL publique ou Channex livre ses webhooks. DOIT se terminer par
+      # /api/webhooks/channex : un enregistrement sur la racine d'un tunnel fait
+      # tomber chaque livraison en 404, et Channex finit par desactiver le
+      # webhook (cause du refus de certification du 2026-08-14). En dev, c'est
+      # une URL de tunnel, donc ephemere.
+      CHANNEX_WEBHOOK_CALLBACK_URL: ${CHANNEX_WEBHOOK_CALLBACK_URL:-}
+      # Certification PMS Channex : autorise le push ARI sans canal OTA branche.
+      # Sans lui, ChannexSyncService court-circuite (« skip: no active OTA channel »)
+      # et aucun task ID n'est renvoye. Defaut false — NE JAMAIS activer en prod.
+      CHANNEX_ALLOW_PUSH_WITHOUT_ACTIVE_OTA: ${CHANNEX_ALLOW_PUSH_WITHOUT_ACTIVE_OTA:-false}
+      # Rattrapage de l'historique des reservations par APPEL DE LISTE a la fin
+      # d'un import. A false PENDANT une certification : Channex compte chaque
+      # lecture par liste comme une reception illegitime, et c'est ce rattrapage
+      # — pas un pull manuel — qui a fait echouer le test 11 le 2026-08-15, une
+      # fois par reconnexion du canal. Defaut true : il donne son passe a une
+      # propriete fraichement connectee, le flux de revisions ne remonte pas
+      # l'anterieur.
+      CHANNEX_IMPORT_PULL_BOOKINGS: ${CHANNEX_IMPORT_PULL_BOOKINGS:-true}
       # WhatsApp OpenWA (test relais) — instance lancee separement (cf. openwa/).
       # base-url via host.docker.internal car OpenWA expose 127.0.0.1:2785 sur l'hote (Docker Desktop Mac).
       # La master key OpenWA est stockee CHIFFREE EN BDD (saisie depuis l'UI), plus en env.
@@ -343,8 +370,44 @@ services:
       # URL que OpenWA appelle pour le relais ENTRANT (guest -> host). pms-server expose
       # 8084 sur l'hote, joignable depuis le container OpenWA via host.docker.internal.
       CLENZY_WHATSAPP_OPENWA_WEBHOOK_URL: http://host.docker.internal:8084/api/webhooks/whatsapp/openwa
+      # Part du plafond conteneur laissee au TAS. L'entrypoint du Dockerfile fixe
+      # `-XX:MaxRAMPercentage=75.0`, mais y ajoute `$JAVA_OPTS` ENSUITE : a options
+      # egales, HotSpot retient la derniere. Cette ligne redefinit donc la valeur
+      # pour le dev seul, sans toucher au Dockerfile ni a la prod.
+      #
+      # Pourquoi 60 et non 75. A 75 % de 4 Go, le tas peut atteindre 3072 Mio. Or
+      # le hors-tas ne tient pas dans le Go restant : mesure a l'execution le
+      # 2026-08-29, hors-tas 325 Mio (metaspace + code), 192 threads soit ~190 Mio
+      # de piles, 12 Mio de tampons directs, plus les structures de G1 (~5-10 % du
+      # tas). Tas plein, le total frole 3,8 Go contre un cgroup de 4 : le CONTENEUR
+      # etouffe avant que la JVM n'atteigne sa propre limite. D'ou l'absence
+      # d'OutOfMemoryError dans les logs de l'incident — la JVM ne s'est jamais
+      # crue a court, elle a juste passe son temps en GC (780 % de CPU, conteneur
+      # `unhealthy`, plus une seule requete servie).
+      #
+      # 60 % => tas ~2,4 Go, et ~1,6 Go laisses au hors-tas. Confortablement au
+      # dessus de l'ensemble de travail (>1,5 Go, cf. plafond ci-dessous), et loin
+      # du sous-dimensionnement qui avait fait echouer l'essai a 2 Go.
+      JAVA_OPTS: -XX:MaxRAMPercentage=60.0
     ports:
       - "8084:8080"
+    # Plafond memoire : SANS lui, `-XX:+UseContainerSupport` de l'entrypoint lit
+    # la limite de la VM Docker entiere (~11 Go) et `MaxRAMPercentage=75` autorise
+    # un tas de ~8,8 Go pour cette seule JVM — dans une VM partagee avec 18 autres
+    # conteneurs. Le noyau finissait par l'abattre (exit 137), apres des pauses GC
+    # qui faisaient expirer Kafka et le pool Hikari.
+    # 4 Go de plafond. La part laissee au tas est fixee par JAVA_OPTS ci-dessus
+    # (60 %, soit ~2,4 Go) : a 75 %, le hors-tas ne tenait pas dans le reste.
+    # Le premier essai a 2 Go etait sous-dimensionne :
+    # mesure a l'execution, la JVM restait collee a 1,99 Go sur 2 et brulait 360 %
+    # de CPU en GC, avec « Thread starvation (housekeeper delta=56s) » cote Hikari.
+    # L'appli porte une quarantaine de groupes de consommateurs Kafka en plus
+    # d'Hibernate et Redis ; son ensemble de travail depasse 1,5 Go.
+    # 4 Go laissent ~7 Go a la VM, ou le reste de la stack tient dans 2,3 Go.
+    deploy:
+      resources:
+        limits:
+          memory: 4g
     depends_on:
       postgres:
         condition: service_healthy
