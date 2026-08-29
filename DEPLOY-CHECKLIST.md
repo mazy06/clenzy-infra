@@ -79,9 +79,10 @@ la colonne elle-meme ne revient pas sans nouveau changeset.
 
 ### Sequence — l'ordre compte
 
-1. [ ] **Choisir le domaine** et le fixer dans le `.env` du VPS :
-       `SITE_DOMAIN=baitly.ma` (ou `baitly.fr`). Le defaut du compose ne doit
-       pas servir de decision.
+1. [ ] **Fixer le domaine** dans le `.env` du VPS : `SITE_DOMAIN=baitly.io`
+       (choisi le 2026-08-29 ; le domaine reste a acquerir aupres d'un
+       registrar). Le defaut du compose — volontairement `baitly.ma`, une
+       valeur fausse — ne doit pas servir de decision.
 2. [ ] **DNS** : `SITE_DOMAIN` et `www.SITE_DOMAIN` vers l'IP du VPS.
        A faire **avant** certbot, sinon le challenge echoue.
 3. [ ] **Deployer** le service et la config nginx. A ce stade le site repond
