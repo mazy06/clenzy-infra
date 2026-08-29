@@ -635,13 +635,31 @@ services:
       # CORS
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://${APP_DOMAIN}}
       SERVER_PORT: 8080
+      # Part du plafond conteneur laissee au TAS. L'entrypoint du Dockerfile fixe
+      # `-XX:MaxRAMPercentage=75.0` mais developpe `$JAVA_OPTS` ENSUITE : a options
+      # egales, HotSpot retient la derniere. Le Dockerfile, partage avec le dev,
+      # n'est donc pas touche.
+      JAVA_OPTS: -XX:MaxRAMPercentage=60.0
     # Audit perf 2026-07-21 : cap memoire explicite. Sans limite, l'entrypoint
     # (-XX:MaxRAMPercentage=75) vise 75% des 7.6GB du VPS (~5.6GB de heap
     # potentiel). Avec 2G de limite : heap max ~1.5GB (usage observe 1.4GB).
+    #
+    # Corrige le 2026-08-29 : 2G de plafond ne suffisent pas a loger ce tas de
+    # 1,5 Go. Le hors-tas ne tient pas dans les 512 Mio restants. Mesure a
+    # l'execution sur la meme image : 307 Mio de metaspace + code, 191 threads
+    # soit ~191 Mio de piles, 12 Mio de tampons directs, plus les structures de
+    # G1 (~10 % du tas), soit ~664 Mio.
+    #   2048 Mio a 75 % -> tas 1536 + 664 = 2200 Mio, soit 107 % du plafond.
+    #   2560 Mio a 60 % -> tas 1536 + 664 = 2200 Mio, soit 86 %. Marge 360 Mio.
+    # Au-dela de 100 %, le CONTENEUR etouffe avant que la JVM n'atteigne sa
+    # propre limite : GC perpetuel SANS OutOfMemoryError dans les logs. Constate
+    # en dev le 2026-08-29 (98 % du cgroup, 780 % de CPU, container unhealthy).
+    # Le tas reste a 1536 Mio, au-dessus des 1,4 Go observes : ce changement ne
+    # peut pas sous-dimensionner l'application. Cout pour le VPS : +512 Mio.
     deploy:
       resources:
         limits:
-          memory: 2G
+          memory: 2560M
     expose:
       - "8080"
     depends_on:
