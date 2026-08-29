@@ -370,8 +370,44 @@ services:
       # URL que OpenWA appelle pour le relais ENTRANT (guest -> host). pms-server expose
       # 8084 sur l'hote, joignable depuis le container OpenWA via host.docker.internal.
       CLENZY_WHATSAPP_OPENWA_WEBHOOK_URL: http://host.docker.internal:8084/api/webhooks/whatsapp/openwa
+      # Part du plafond conteneur laissee au TAS. L'entrypoint du Dockerfile fixe
+      # `-XX:MaxRAMPercentage=75.0`, mais y ajoute `$JAVA_OPTS` ENSUITE : a options
+      # egales, HotSpot retient la derniere. Cette ligne redefinit donc la valeur
+      # pour le dev seul, sans toucher au Dockerfile ni a la prod.
+      #
+      # Pourquoi 60 et non 75. A 75 % de 4 Go, le tas peut atteindre 3072 Mio. Or
+      # le hors-tas ne tient pas dans le Go restant : mesure a l'execution le
+      # 2026-08-29, hors-tas 325 Mio (metaspace + code), 192 threads soit ~190 Mio
+      # de piles, 12 Mio de tampons directs, plus les structures de G1 (~5-10 % du
+      # tas). Tas plein, le total frole 3,8 Go contre un cgroup de 4 : le CONTENEUR
+      # etouffe avant que la JVM n'atteigne sa propre limite. D'ou l'absence
+      # d'OutOfMemoryError dans les logs de l'incident — la JVM ne s'est jamais
+      # crue a court, elle a juste passe son temps en GC (780 % de CPU, conteneur
+      # `unhealthy`, plus une seule requete servie).
+      #
+      # 60 % => tas ~2,4 Go, et ~1,6 Go laisses au hors-tas. Confortablement au
+      # dessus de l'ensemble de travail (>1,5 Go, cf. plafond ci-dessous), et loin
+      # du sous-dimensionnement qui avait fait echouer l'essai a 2 Go.
+      JAVA_OPTS: -XX:MaxRAMPercentage=60.0
     ports:
       - "8084:8080"
+    # Plafond memoire : SANS lui, `-XX:+UseContainerSupport` de l'entrypoint lit
+    # la limite de la VM Docker entiere (~11 Go) et `MaxRAMPercentage=75` autorise
+    # un tas de ~8,8 Go pour cette seule JVM — dans une VM partagee avec 18 autres
+    # conteneurs. Le noyau finissait par l'abattre (exit 137), apres des pauses GC
+    # qui faisaient expirer Kafka et le pool Hikari.
+    # 4 Go de plafond. La part laissee au tas est fixee par JAVA_OPTS ci-dessus
+    # (60 %, soit ~2,4 Go) : a 75 %, le hors-tas ne tenait pas dans le reste.
+    # Le premier essai a 2 Go etait sous-dimensionne :
+    # mesure a l'execution, la JVM restait collee a 1,99 Go sur 2 et brulait 360 %
+    # de CPU en GC, avec « Thread starvation (housekeeper delta=56s) » cote Hikari.
+    # L'appli porte une quarantaine de groupes de consommateurs Kafka en plus
+    # d'Hibernate et Redis ; son ensemble de travail depasse 1,5 Go.
+    # 4 Go laissent ~7 Go a la VM, ou le reste de la stack tient dans 2,3 Go.
+    deploy:
+      resources:
+        limits:
+          memory: 4g
     depends_on:
       postgres:
         condition: service_healthy
