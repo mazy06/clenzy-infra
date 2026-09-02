@@ -595,6 +595,21 @@ services:
       AIRBNB_CLIENT_SECRET: ${AIRBNB_CLIENT_SECRET:-}
       AIRBNB_REDIRECT_URI: https://${APP_DOMAIN}/api/airbnb/callback
       AIRBNB_WEBHOOK_SECRET: ${AIRBNB_WEBHOOK_SECRET:-}
+      # ─── Secrets de signature des webhooks partenaires ───────────────────
+      # Sans eux, le handler repond 503 « signature verification not configured »
+      # (fail-closed) : un secret absent est une erreur de deploiement, pas une
+      # permission de traiter du non-signe.
+      #
+      # ATTENTION aux deux dernieres. Spring lit `gocardless.webhook-secret` et
+      # `wise.public-key`, en KEBAB-case : sa liaison relachee SUPPRIME le tiret
+      # au lieu d'en faire un underscore. `GOCARDLESS_WEBHOOK_SECRET` viserait
+      # la propriete `gocardless.webhook.secret`, qui n'existe pas — la variable
+      # serait ignoree en silence. Ne pas « corriger » ces deux noms.
+      BOOKING_WEBHOOK_SECRET: ${BOOKING_WEBHOOK_SECRET:-}
+      HOMEAWAY_WEBHOOK_SECRET: ${HOMEAWAY_WEBHOOK_SECRET:-}
+      TRIPADVISOR_API_SECRET: ${TRIPADVISOR_API_SECRET:-}
+      GOCARDLESS_WEBHOOKSECRET: ${GOCARDLESS_WEBHOOK_SECRET:-}
+      WISE_PUBLICKEY: ${WISE_PUBLIC_KEY:-}
       # Mail SMTP (envoi via Brevo)
       MAIL_HOST: ${MAIL_HOST:-smtp-relay.brevo.com}
       MAIL_PORT: ${MAIL_PORT:-587}
