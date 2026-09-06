@@ -1,0 +1,141 @@
+name: DB Apply File
+
+# Applique un fichier SQL VERSIONNE de ce depot a la base cible.
+#
+# Pourquoi un workflow de plus : `DB Migration` prend le SQL en parametre
+# d'entree, ce qui plafonne a quelques kilo-octets et casse au premier
+# apostrophe. Un jeu de donnees de plusieurs centaines de kilo-octets ne passe
+# pas par la — mais reste parfaitement relisible en pull request.
+#
+# Le SQL execute vient du DEPOT, jamais d'une saisie : ce qui tourne est donc ce
+# qui a ete relu et fusionne. Les deux entrees libres (chemin et variables psql)
+# sont validees avant usage et ne sont jamais interpolees directement dans un
+# shell — elles transitent par des variables d'environnement citees.
+
+on:
+  workflow_dispatch:
+    inputs:
+      file:
+        description: 'Chemin du fichier SQL dans ce depot (ex: seed/integration-dataset.sql)'
+        required: true
+        type: string
+      psql_vars:
+        description: 'Variables psql, forme "cle=valeur" separees par des espaces (ex: org_id=3 owner_id=1)'
+        required: false
+        default: ''
+        type: string
+      confirmation:
+        description: 'Taper APPLIQUER pour confirmer une ecriture en base'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  apply:
+    name: Apply SQL file
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Verifier la confirmation
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          if [ "$CONFIRMATION" != "APPLIQUER" ]; then
+            echo "::error::Confirmation absente ou incorrecte. Taper APPLIQUER pour executer."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Valider les entrees
+        env:
+          SQL_FILE: ${{ inputs.file }}
+          PSQL_VARS: ${{ inputs.psql_vars }}
+        run: |
+          set -e
+          # Chemin : relatif, sans remontee, et sous le depot. L'entree est
+          # libre, le fichier execute ne doit pas l'etre.
+          case "$SQL_FILE" in
+            /*|*..*) echo "::error::Chemin invalide."; exit 1 ;;
+          esac
+          case "$SQL_FILE" in
+            *.sql) ;;
+            *) echo "::error::Seuls les fichiers .sql sont acceptes."; exit 1 ;;
+          esac
+          if [ ! -f "$SQL_FILE" ]; then
+            echo "::error::Fichier introuvable : $SQL_FILE"
+            exit 1
+          fi
+
+          # Variables psql : uniquement des paires cle=valeur alphanumeriques.
+          # Sans cette borne, la chaine serait un vecteur d'injection dans le
+          # shell distant, ou elle doit rester non citee pour se decouper en
+          # plusieurs arguments -v.
+          if [ -n "$PSQL_VARS" ]; then
+            printf '%s' "$PSQL_VARS" | grep -Eq '^[A-Za-z_][A-Za-z0-9_]*=[A-Za-z0-9_.:-]+( [A-Za-z_][A-Za-z0-9_]*=[A-Za-z0-9_.:-]+)*$' || {
+              echo "::error::psql_vars doit etre une suite de cle=valeur simples."
+              exit 1
+            }
+          fi
+
+          echo "Fichier : $SQL_FILE ($(wc -c < "$SQL_FILE") octets, $(wc -l < "$SQL_FILE") lignes)"
+
+      - name: Copier le fichier sur le VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST != '' && secrets.VPS_HOST || vars.VPS_HOST }}
+          username: ${{ secrets.VPS_USER != '' && secrets.VPS_USER || vars.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: ${{ inputs.file }}
+          target: /tmp/db-apply
+          strip_components: 0
+
+      - name: Executer le fichier
+        uses: appleboy/ssh-action@v1
+        env:
+          INFRA_DIR_VALUE: ${{ vars.VPS_INFRA_DIR }}
+          SQL_FILE: ${{ inputs.file }}
+          PSQL_VARS: ${{ inputs.psql_vars }}
+        with:
+          host: ${{ secrets.VPS_HOST != '' && secrets.VPS_HOST || vars.VPS_HOST }}
+          username: ${{ secrets.VPS_USER != '' && secrets.VPS_USER || vars.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          envs: INFRA_DIR_VALUE,SQL_FILE,PSQL_VARS
+          script: |
+            set -e
+            INFRA_DIR="${INFRA_DIR_VALUE:-$HOME/clenzy-infra}"
+            cd "$INFRA_DIR"
+            set -a
+            . ./.env
+            set +a
+
+            SRC="/tmp/db-apply/${SQL_FILE}"
+            if [ ! -f "$SRC" ]; then
+              echo "Fichier absent sur le VPS : $SRC"
+              exit 1
+            fi
+            echo "Application de ${SQL_FILE} ($(wc -l < "$SRC") lignes)"
+
+            # Les variables psql restent NON citees : elles doivent se decouper
+            # en plusieurs arguments. Leur forme a ete bornee a l'etape
+            # precedente, sur le runner.
+            PSQL_ARGS=""
+            for kv in ${PSQL_VARS}; do
+              PSQL_ARGS="${PSQL_ARGS} -v ${kv}"
+            done
+
+            # Le fichier entre par l'entree standard : ni montage, ni residu
+            # dans le conteneur.
+            docker compose -f docker-compose.prod.yml --env-file .env exec -T postgres \
+              psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" \
+                   -v ON_ERROR_STOP=1 ${PSQL_ARGS} -f - < "$SRC"
+
+            rm -f "$SRC"
+            echo "Applique."
+
+      # Pas de redemarrage du serveur : un fichier de DONNEES n'invalide aucun
+      # cache de schema. Une migration de structure passe par Liquibase, qui
+      # s'applique au boot lors du CD Deploy.
