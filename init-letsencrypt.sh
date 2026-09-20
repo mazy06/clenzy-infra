@@ -57,6 +57,29 @@ echo "Cert Name: ${CERTBOT_CERT_NAME}"
 echo "Email    : ${EMAIL}"
 echo ""
 
+# Garde d'idempotence.
+#
+# Ce script INITIALISE une instance. Relance sur une instance qui tourne, il
+# faisait pire que rien : il ecrasait le certificat valide par un auto-signe,
+# le supprimait a l'etape 3, et certbot — voyant un lineage deja enregistre —
+# ecrivait le nouveau sous un nom suffixe (`<domaine>-0001`) que nginx ne
+# connait pas. Resultat : nginx en boucle de redemarrage et le site hors ligne,
+# alors qu'il fonctionnait avant la relance. Constate le 2026-09-20.
+#
+# Le renouvellement est assure par le conteneur `certbot` du compose ; ce script
+# n'a donc aucune raison d'etre rejoue. On sort en succes, sauf demande
+# explicite via FORCE=true.
+if [ "${FORCE:-false}" != "true" ]; then
+  if docker compose -f docker-compose.prod.yml --env-file .env run --rm \
+       --entrypoint "test -s /etc/letsencrypt/live/${CERTBOT_CERT_NAME}/fullchain.pem" \
+       certbot >/dev/null 2>&1; then
+    echo "Un certificat existe deja pour ${CERTBOT_CERT_NAME} : rien a faire."
+    echo "Le renouvellement est automatique (conteneur certbot)."
+    echo "Pour forcer malgre tout : FORCE=true ./init-letsencrypt.sh"
+    exit 0
+  fi
+fi
+
 # Etape 1 : Creer un certificat auto-signe temporaire
 # Nginx a besoin d'un certificat pour demarrer, meme invalide
 echo "[1/4] Creation d'un certificat temporaire..."
