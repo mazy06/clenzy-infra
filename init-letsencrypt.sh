@@ -61,7 +61,13 @@ echo ""
 # Nginx a besoin d'un certificat pour demarrer, meme invalide
 echo "[1/4] Creation d'un certificat temporaire..."
 
-mkdir -p "$SCRIPT_DIR/certbot/conf/live/${CERTBOT_CERT_NAME}"
+# Le repertoire doit exister DANS LE VOLUME, pas sur l'hote : le compose monte
+# le volume nomme `certbot-certs` sur /etc/letsencrypt, pas un bind mount. Un
+# mkdir cote hote ne l'atteint donc jamais, et openssl echouait sur
+# « Can't open .../privkey.pem for writing » — invisible tant que le volume
+# avait deja servi, revele au premier demarrage d'une nouvelle instance.
+docker compose -f docker-compose.prod.yml --env-file .env run --rm --entrypoint "\
+  mkdir -p /etc/letsencrypt/live/${CERTBOT_CERT_NAME}" certbot
 
 docker compose -f docker-compose.prod.yml --env-file .env run --rm --entrypoint "\
   openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
