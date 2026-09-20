@@ -34,6 +34,14 @@ name: DB Query
 on:
   workflow_dispatch:
     inputs:
+      target:
+        description: "Instance cible (environnement GitHub)"
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - production-baitly
       sql:
         description: 'Requete SELECT a executer (lecture seule)'
         required: true
@@ -51,7 +59,8 @@ jobs:
   query:
     name: Read-only SQL query
     runs-on: ubuntu-latest
-    environment: production
+    environment:
+      name: ${{ github.event.inputs.target || 'production' }}
 
     steps:
       - name: Run read-only query on VPS

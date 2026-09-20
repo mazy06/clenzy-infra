@@ -34,6 +34,14 @@ name: DB Status
 on:
   workflow_dispatch:
     inputs:
+      target:
+        description: "Instance cible (environnement GitHub)"
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - production-baitly
       verbose:
         description: 'Affiche aussi les 10 derniers changesets traces'
         required: false
@@ -54,7 +62,8 @@ jobs:
   status:
     name: Read-only Liquibase status
     runs-on: ubuntu-latest
-    environment: production
+    environment:
+      name: ${{ github.event.inputs.target || 'production' }}
 
     steps:
       - name: Run Liquibase status + validate on VPS

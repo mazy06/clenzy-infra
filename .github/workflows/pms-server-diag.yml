@@ -10,6 +10,14 @@ name: PMS Server Diag
 on:
   workflow_dispatch:
     inputs:
+      target:
+        description: "Instance cible (environnement GitHub)"
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - production-baitly
       tail:
         description: 'Nombre de lignes de log a afficher'
         required: true
@@ -23,7 +31,8 @@ jobs:
   diag:
     name: Dump pms-server logs and state
     runs-on: ubuntu-latest
-    environment: production
+    environment:
+      name: ${{ github.event.inputs.target || 'production' }}
 
     steps:
       - name: Fetch pms-server logs and container state

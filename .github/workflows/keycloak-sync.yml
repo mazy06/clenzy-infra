@@ -2,6 +2,15 @@ name: Keycloak Sync Clients
 
 on:
   workflow_dispatch:
+    inputs:
+      target:
+        description: "Instance cible (environnement GitHub)"
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - production-baitly
 
 permissions:
   contents: read
@@ -10,7 +19,8 @@ jobs:
   sync:
     name: Sync Keycloak Clients
     runs-on: ubuntu-latest
-    environment: production
+    environment:
+      name: ${{ github.event.inputs.target || 'production' }}
 
     steps:
       - name: Sync Keycloak clients on VPS

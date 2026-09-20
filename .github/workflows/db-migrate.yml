@@ -3,6 +3,14 @@ name: DB Migration
 on:
   workflow_dispatch:
     inputs:
+      target:
+        description: "Instance cible (environnement GitHub)"
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - production-baitly
       sql:
         description: 'SQL to execute on the clenzy database'
         required: true
@@ -15,7 +23,8 @@ jobs:
   migrate:
     name: Run SQL Migration
     runs-on: ubuntu-latest
-    environment: production
+    environment:
+      name: ${{ github.event.inputs.target || 'production' }}
 
     steps:
       - name: Execute SQL migration on VPS

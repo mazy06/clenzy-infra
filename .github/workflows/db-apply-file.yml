@@ -15,6 +15,14 @@ name: DB Apply File
 on:
   workflow_dispatch:
     inputs:
+      target:
+        description: "Instance cible (environnement GitHub)"
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - production-baitly
       file:
         description: 'Chemin du fichier SQL dans ce depot (ex: seed/integration-dataset.sql)'
         required: true
@@ -36,7 +44,8 @@ jobs:
   apply:
     name: Apply SQL file
     runs-on: ubuntu-latest
-    environment: production
+    environment:
+      name: ${{ github.event.inputs.target || 'production' }}
 
     steps:
       - name: Verifier la confirmation

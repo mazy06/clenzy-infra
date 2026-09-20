@@ -39,6 +39,14 @@ name: Liquibase Restamp
 on:
   workflow_dispatch:
     inputs:
+      target:
+        description: "Instance cible (environnement GitHub)"
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - production-baitly
       dry_run:
         description: 'Dry-run (montre etat et UPDATE prevu, ne modifie rien)'
         required: true
@@ -62,7 +70,8 @@ jobs:
   restamp:
     name: Migrate databasechangelog filename
     runs-on: ubuntu-latest
-    environment: production
+    environment:
+      name: ${{ github.event.inputs.target || 'production' }}
 
     steps:
       - name: Run restamp procedure on VPS

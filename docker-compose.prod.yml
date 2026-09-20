@@ -32,7 +32,13 @@ services:
       # sinon nginx recoit le litteral ${SITE_DOMAIN} et refuse de demarrer.
       SITE_DOMAIN: ${SITE_DOMAIN:-baitly.ma}
       CERTBOT_CERT_NAME: ${CERTBOT_CERT_NAME:-${DOMAIN}}
-      NGINX_ENVSUBST_FILTER: ^(DOMAIN|APP_DOMAIN|AUTH_DOMAIN|MONITORING_DOMAIN|PROMETHEUS_DOMAIN|KAFKA_UI_DOMAIN|SITE_DOMAIN|CERTBOT_CERT_NAME)$
+      # Service servi a la RACINE du domaine. Defaut = landing historique, pour
+      # que clenzy.fr ne bouge pas. Une instance dont la racine est la landing
+      # Baitly pose ROOT_SITE_SERVER=baitly-site dans son .env.
+      # DOIT figurer dans NGINX_ENVSUBST_FILTER, sinon nginx recoit le litteral
+      # ${ROOT_SITE_SERVER} comme nom d'upstream et refuse de demarrer.
+      ROOT_SITE_SERVER: ${ROOT_SITE_SERVER:-clenzy-landing}
+      NGINX_ENVSUBST_FILTER: ^(DOMAIN|APP_DOMAIN|AUTH_DOMAIN|MONITORING_DOMAIN|PROMETHEUS_DOMAIN|KAFKA_UI_DOMAIN|SITE_DOMAIN|CERTBOT_CERT_NAME|ROOT_SITE_SERVER)$
       NGINX_ENVSUBST_TEMPLATE_DIR: /etc/nginx/templates
       NGINX_ENVSUBST_TEMPLATE_SUFFIX: .template
       NGINX_ENVSUBST_OUTPUT_DIR: /etc/nginx
@@ -46,7 +52,10 @@ services:
       - certbot-webroot:/var/www/certbot:ro
       - certbot-certs:/etc/letsencrypt:ro
     depends_on:
+      # Les deux sites possibles pour la racine : nginx refuse de demarrer si
+      # l'upstream ROOT_SITE_SERVER n'est pas resolvable, il doit donc etre la.
       - landing
+      - baitly-site
       - pms-client
       - pms-server
       - keycloak
@@ -97,8 +106,17 @@ services:
     build:
       context: ../clenzy/client
       dockerfile: Dockerfile.site
+      # Aucune URL en build-arg : cf. pms-client. Elles sont resolues a
+      # l'execution via les variables ci-dessous.
     container_name: baitly-site-prod
     restart: unless-stopped
+    environment:
+      # L'API publique marketplace appelee par le parcours prestataire, et le
+      # PMS vers lequel la landing renvoie. Avant, ces deux URL etaient gravees
+      # au build et l'image publiee pointait sur http://localhost:8084 — la
+      # landing ne pouvait joindre aucune API en production.
+      VITE_API_URL: https://${APP_DOMAIN:-app.clenzy.fr}
+      VITE_APP_URL: https://${APP_DOMAIN:-app.clenzy.fr}
     expose:
       - "80"
     networks:
@@ -476,12 +494,16 @@ services:
       # modifications schema silencieuses au runtime).
       SPRING_JPA_HIBERNATE_DDL_AUTO: validate
       SPRING_LIQUIBASE_ENABLED: "true"
-      FRONTEND_URL: https://app.clenzy.fr
+      # Toutes derivees de APP_DOMAIN : une seconde instance (baitly.fr) ne doit
+      # pas renvoyer ses utilisateurs sur le domaine de la premiere. Le
+      # `{CHECKOUT_SESSION_ID}` n'a pas de `$`, compose ne l'interpole donc pas
+      # et Stripe le recoit litteral, comme il l'attend.
+      FRONTEND_URL: https://${APP_DOMAIN:-app.clenzy.fr}
       # Mapbox (carte dans les emails check-in)
       MAPBOX_ACCESS_TOKEN: ${MAPBOX_ACCESS_TOKEN:-}
       STRIPE_CURRENCY: eur
-      STRIPE_SUCCESS_URL: https://app.clenzy.fr/interventions/payment/success?session_id={CHECKOUT_SESSION_ID}
-      STRIPE_CANCEL_URL: https://app.clenzy.fr/interventions/payment/cancel
+      STRIPE_SUCCESS_URL: https://${APP_DOMAIN:-app.clenzy.fr}/interventions/payment/success?session_id={CHECKOUT_SESSION_ID}
+      STRIPE_CANCEL_URL: https://${APP_DOMAIN:-app.clenzy.fr}/interventions/payment/cancel
       # DataSource Primary via pgBouncer (audit perf 2026-07-21 : cablage
       # scram-sha-256 finalise — userlist en clair generee par
       # pgbouncer/entrypoint.sh, cf. pgbouncer.ini).
@@ -730,14 +752,30 @@ services:
     build:
       context: ../clenzy/client
       dockerfile: Dockerfile
-      args:
-        VITE_API_BASE_URL: https://app.clenzy.fr
-        VITE_KEYCLOAK_URL: https://auth.clenzy.fr
-        VITE_KEYCLOAK_REALM: clenzy
-        VITE_KEYCLOAK_CLIENT_ID: clenzy-web
-        VITE_STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY}
+      # AUCUNE URL en build-arg : Vite les graverait dans le bundle et l'image
+      # ne servirait plus qu'un seul domaine. Elles sont resolues a l'EXECUTION
+      # (variables ci-dessous -> /docker-entrypoint.d/40-baitly-runtime-config.sh
+      # -> /baitly-config.js -> src/config/runtimeConfig.ts). C'est ce qui permet
+      # a l'image GHCR unique de servir clenzy.fr ET baitly.fr.
     container_name: clenzy-client-prod
     restart: unless-stopped
+    environment:
+      VITE_API_BASE_URL: https://${APP_DOMAIN:-app.clenzy.fr}
+      VITE_API_BASE_PATH: /api
+      VITE_KEYCLOAK_URL: https://${AUTH_DOMAIN:-auth.clenzy.fr}
+      VITE_KEYCLOAK_REALM: ${KEYCLOAK_REALM:-clenzy}
+      # Cle DEDIEE : ne pas reutiliser KEYCLOAK_CLIENT_ID, qui designe le client
+      # BACKEND (clenzy-api). Le front utilise le client public clenzy-web.
+      VITE_KEYCLOAK_CLIENT_ID: ${VITE_KEYCLOAK_CLIENT_ID:-clenzy-web}
+      VITE_APP_NAME: ${VITE_APP_NAME:-Baitly}
+      VITE_ENV: production
+      VITE_STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
+      VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
+      VITE_POSTHOG_KEY: ${VITE_POSTHOG_KEY:-}
+      VITE_POSTHOG_HOST: ${VITE_POSTHOG_HOST:-}
+      VITE_MAPBOX_TOKEN: ${VITE_MAPBOX_TOKEN:-}
+      VITE_TURNSTILE_SITE_KEY: ${VITE_TURNSTILE_SITE_KEY:-}
+      VITE_CRISP_WEBSITE_ID: ${VITE_CRISP_WEBSITE_ID:-}
     expose:
       - "80"
     networks:
