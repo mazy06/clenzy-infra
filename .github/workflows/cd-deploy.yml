@@ -28,6 +28,14 @@ on:
       - '.github/workflows/cd-deploy.yml'
   workflow_dispatch:
     inputs:
+      target:
+        description: "Instance a deployer (environnement GitHub)"
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - production-baitly
       deploy_mode:
         description: 'Mode de deploiement'
         required: true
@@ -73,15 +81,28 @@ permissions:
 # l'ancien ID -> « No such container » -> echec). cancel-in-progress: false => file d'attente
 # (le 2e attend la fin du 1er) ; NE JAMAIS passer a true (annuler un deploy en cours peut
 # laisser la prod incoherente). Observe 3 echecs les 2026-06-18/19.
+# La cle de file d'attente est PAR INSTANCE : deux instances vivent sur deux VPS
+# distincts et n'ont aucune raison de se bloquer mutuellement. En revanche deux
+# deploiements de la MEME instance doivent rester serialises.
 concurrency:
-  group: cd-deploy-production
+  group: cd-deploy-${{ github.event.inputs.target || github.event.client_payload.target || 'production' }}
   cancel-in-progress: false
 
 jobs:
   deploy:
     name: Deploy Infrastructure
     runs-on: ubuntu-latest
-    environment: production
+    # L'environnement GitHub porte TOUT ce qui distingue une instance : VPS_HOST,
+    # VPS_USER, VPS_SSH_KEY, VPS_INFRA_DIR et PROD_ENV_FILE_B64. Ajouter une
+    # instance = creer un environnement, pas dupliquer ce workflow.
+    #
+    # Defaut deliberement 'production' : un merge sur la branche `production` ne
+    # deploie QUE clenzy.fr. baitly.fr se declenche explicitement (workflow_dispatch
+    # avec target, ou repository_dispatch portant client_payload.target). Pour que
+    # les deux partent sur merge, il faudrait une matrice — changement volontaire,
+    # pas un effet de bord.
+    environment:
+      name: ${{ github.event.inputs.target || github.event.client_payload.target || 'production' }}
 
     steps:
       # PAS de actions/checkout : aucune etape de ce job ne lit le depot — c'est le

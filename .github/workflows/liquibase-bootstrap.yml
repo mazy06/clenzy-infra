@@ -33,6 +33,14 @@ name: Liquibase Bootstrap
 on:
   workflow_dispatch:
     inputs:
+      target:
+        description: "Instance cible (environnement GitHub)"
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - production-baitly
       sync_tag:
         description: "Tag jusqu'auquel marquer les changesets comme appliques (sans les executer)"
         required: true
@@ -51,7 +59,8 @@ jobs:
   bootstrap:
     name: Bootstrap Liquibase changelog tracking
     runs-on: ubuntu-latest
-    environment: production
+    environment:
+      name: ${{ github.event.inputs.target || 'production' }}
 
     steps:
       - name: Run Liquibase changelog-sync + update on VPS

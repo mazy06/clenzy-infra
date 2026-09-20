@@ -31,6 +31,20 @@ AUTH_DOM="${AUTH_DOMAIN:-auth.clenzy.fr}"
 MONITORING_DOM="${MONITORING_DOMAIN:-monitoring.clenzy.fr}"
 PROMETHEUS_DOM="${PROMETHEUS_DOMAIN:-prometheus.clenzy.fr}"
 KAFKA_UI_DOM="${KAFKA_UI_DOMAIN:-kafka.clenzy.fr}"
+SITE_DOM="${SITE_DOMAIN:-}"
+
+# Liste des domaines du certificat, construite dynamiquement.
+#
+# Let's Encrypt valide TOUT OU RIEN : un seul domaine qui ne resout pas fait
+# echouer la demande entiere, et les six autres vhosts restent sans certificat.
+# Le site marketing (SITE_DOMAIN) n'est donc ajoute que s'il est reellement
+# configure et distinct du domaine principal — nginx le sert sous le meme
+# CERTBOT_CERT_NAME, mais il reste facultatif. Sans cette garde, le defaut du
+# compose (baitly.ma) partait dans la demande et la faisait echouer.
+CERT_DOMAINS="-d ${DOMAINS} -d www.${DOMAINS} -d ${APP_DOM} -d ${AUTH_DOM} -d ${MONITORING_DOM} -d ${PROMETHEUS_DOM} -d ${KAFKA_UI_DOM}"
+if [ -n "$SITE_DOM" ] && [ "$SITE_DOM" != "$DOMAINS" ]; then
+  CERT_DOMAINS="$CERT_DOMAINS -d ${SITE_DOM} -d www.${SITE_DOM}"
+fi
 CERTBOT_CERT_NAME="${CERTBOT_CERT_NAME:-${DOMAINS}}"
 
 # Email pour les notifications Let's Encrypt (expiration, etc.)
@@ -38,7 +52,7 @@ EMAIL="${LETSENCRYPT_EMAIL:-admin@${DOMAINS}}"
 
 echo "=== Initialisation Let's Encrypt ==="
 echo ""
-echo "Domaines : ${DOMAINS}, www.${DOMAINS}, ${APP_DOM}, ${AUTH_DOM}, ${MONITORING_DOM}, ${PROMETHEUS_DOM}, ${KAFKA_UI_DOM}"
+echo "Domaines : $(printf '%s' "${CERT_DOMAINS}" | sed 's/-d //g')"
 echo "Cert Name: ${CERTBOT_CERT_NAME}"
 echo "Email    : ${EMAIL}"
 echo ""
@@ -77,13 +91,7 @@ docker compose -f docker-compose.prod.yml --env-file .env run --rm --entrypoint 
   certbot certonly --webroot -w /var/www/certbot \
     --email ${EMAIL} \
     --cert-name ${CERTBOT_CERT_NAME} \
-    -d ${DOMAINS} \
-    -d www.${DOMAINS} \
-    -d ${APP_DOM} \
-    -d ${AUTH_DOM} \
-    -d ${MONITORING_DOM} \
-    -d ${PROMETHEUS_DOM} \
-    -d ${KAFKA_UI_DOM} \
+    ${CERT_DOMAINS} \
     --rsa-key-size 4096 \
     --agree-tos \
     --no-eff-email \

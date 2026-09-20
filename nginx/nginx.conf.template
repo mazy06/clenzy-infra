@@ -117,8 +117,18 @@ http {
     # repartir la charge sur N instances (docker compose --scale pms-server=N).
     # Docker DNS resout automatiquement les IPs des replicas.
     # ==========================================
-    upstream landing {
-        server clenzy-landing:80;
+    # Site servi a la RACINE du domaine (${DOMAIN}).
+    #
+    # Le serveur est une variable : sur clenzy.fr c'est la landing historique
+    # (clenzy-landing), sur baitly.fr la landing Baitly (baitly-site). Elle est
+    # substituee par envsubst au demarrage — ce n'est donc PAS une variable
+    # nginx a l'execution, et aucun resolver n'est requis.
+    #
+    # ATTENTION : un upstream dont le serveur ne resout pas fait REFUSER le
+    # demarrage de nginx ("host not found in upstream"), pas une simple 502. Le
+    # service designe ici doit reellement etre deploye sur l'instance.
+    upstream root_site {
+        server ${ROOT_SITE_SERVER}:80;
         keepalive 16;
     }
 
@@ -179,7 +189,7 @@ http {
         location / {
             limit_req zone=general burst=50 nodelay;
 
-            proxy_pass http://landing;
+            proxy_pass http://root_site;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -187,7 +197,7 @@ http {
 
             # Cache assets statiques
             location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
-                proxy_pass http://landing;
+                proxy_pass http://root_site;
                 expires 1y;
                 add_header Cache-Control "public, immutable";
                 access_log off;

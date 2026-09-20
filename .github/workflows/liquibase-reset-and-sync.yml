@@ -40,6 +40,14 @@ name: Liquibase Reset + Sync
 on:
   workflow_dispatch:
     inputs:
+      target:
+        description: "Instance cible (environnement GitHub)"
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - production-baitly
       confirm:
         description: "Tape EXACTLY 'RESET-AND-SYNC' pour confirmer (TRUNCATE databasechangelog en prod)"
         required: true
@@ -57,7 +65,8 @@ jobs:
   reset_and_sync:
     name: Reset databasechangelog + full changelog-sync
     runs-on: ubuntu-latest
-    environment: production
+    environment:
+      name: ${{ github.event.inputs.target || 'production' }}
 
     steps:
       - name: Verify confirmation input

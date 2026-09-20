@@ -58,7 +58,19 @@ echo ""
 # On pull explicitement l'image declaree dans le compose pour qu'aucun ancien
 # container/image alpine ne soit reutilise silencieusement.
 echo "🧩 Vérification de l'image PostgreSQL (pgvector requise pour la RAG)..."
-docker compose -f docker-compose.dev.yml --env-file .env.dev pull postgres
+# Le pull est un controle de FRAICHEUR, pas une dependance : il evite qu'une
+# vieille image alpine soit reutilisee en silence. Hors ligne (DNS coupe, VPN,
+# registre injoignable), il echouait avec `set -e` et bloquait tout le
+# demarrage alors que l'image locale suffisait. On previent, on continue.
+if ! docker compose -f docker-compose.dev.yml --env-file .env.dev pull postgres; then
+  if docker image inspect pgvector/pgvector:pg15 >/dev/null 2>&1; then
+    echo "   ⚠️  Registre injoignable — on repart sur l'image pgvector/pgvector:pg15 deja en local."
+  else
+    echo "   ❌ Registre injoignable ET aucune image pgvector locale : Postgres ne peut pas demarrer."
+    echo "      Retablis la connexion, puis relance. (Sans pgvector : migration 0143 et boot Hibernate en echec.)"
+    exit 1
+  fi
+fi
 
 # Forcer le rebuild du frontend et du backend sans cache (pour toujours inclure les derniers changements)
 echo "🔨 Reconstruction du frontend et du backend (sans cache)..."
@@ -86,6 +98,7 @@ echo "✅ Environnement de développement démarré !"
 echo ""
 echo "── Applications ──────────────────────────────"
 echo "🌐 Landing Page  : http://localhost:8080"
+echo "🎨 Site Baitly   : http://localhost:3005"
 echo "🌐 PMS Frontend  : http://localhost:3000"
 echo "🔧 PMS API       : http://localhost:8084"
 echo ""
