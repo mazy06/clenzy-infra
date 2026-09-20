@@ -185,6 +185,29 @@ http {
         ssl_session_cache shared:SSL:10m;
         ssl_session_timeout 10m;
 
+        # Configuration d'EXECUTION — JAMAIS de cache.
+        #
+        # Elle porte l'URL de l'API et celle de Keycloak, et differe d'une
+        # instance a l'autre. La regle des .js plus bas (1 an, immutable) la
+        # figerait dans le navigateur de chaque visiteur ET dans le cache
+        # Cloudflare : un changement de domaine ne serait jamais pris en compte.
+        # Le conteneur applique deja un no-cache, mais ce proxy le REECRIT — la
+        # regle doit donc exister ici aussi.
+        #
+        # `location =` est une correspondance exacte : elle prime sur `location /`
+        # et sur les expressions regulieres qui y sont imbriquees.
+        location = /baitly-config.js {
+            proxy_pass http://root_site;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            # `private` et `no-store` valent aussi pour Cloudflare, qui met les
+            # .js en cache d'apres leur extension.
+            add_header Cache-Control "no-store, no-cache, must-revalidate, private" always;
+            expires -1;
+        }
+
         # Landing page
         location / {
             limit_req zone=general burst=50 nodelay;
@@ -240,6 +263,29 @@ http {
         ssl_prefer_server_ciphers off;
         ssl_session_cache shared:SSL:10m;
         ssl_session_timeout 10m;
+
+        # Configuration d'EXECUTION — JAMAIS de cache.
+        #
+        # Elle porte l'URL de l'API et celle de Keycloak, et differe d'une
+        # instance a l'autre. La regle des .js plus bas (1 an, immutable) la
+        # figerait dans le navigateur de chaque visiteur ET dans le cache
+        # Cloudflare : un changement de domaine ne serait jamais pris en compte.
+        # Le conteneur applique deja un no-cache, mais ce proxy le REECRIT — la
+        # regle doit donc exister ici aussi.
+        #
+        # `location =` est une correspondance exacte : elle prime sur `location /`
+        # et sur les expressions regulieres qui y sont imbriquees.
+        location = /baitly-config.js {
+            proxy_pass http://baitly-site;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            # `private` et `no-store` valent aussi pour Cloudflare, qui met les
+            # .js en cache d'apres leur extension.
+            add_header Cache-Control "no-store, no-cache, must-revalidate, private" always;
+            expires -1;
+        }
 
         location / {
             limit_req zone=general burst=50 nodelay;
@@ -343,6 +389,30 @@ http {
             proxy_pass_request_body off;
             proxy_set_header Content-Length "";
             proxy_set_header X-Original-URI $request_uri;
+        }
+
+        # Configuration d'EXECUTION — JAMAIS de cache.
+        #
+        # Elle porte l'URL de l'API et celle de Keycloak, et differe d'une
+        # instance a l'autre. La regle des .js plus bas (1 an, immutable) la
+        # figerait dans le navigateur de chaque visiteur ET dans le cache
+        # Cloudflare : un changement de domaine ne serait jamais pris en compte.
+        # Le conteneur applique deja un no-cache, mais ce proxy le REECRIT — la
+        # regle doit donc exister ici aussi.
+        #
+        # `location =` est une correspondance exacte : elle prime sur `location /`
+        # et sur les expressions regulieres qui y sont imbriquees.
+        location = /baitly-config.js {
+            set $pms_config_upstream http://clenzy-frontend:80;
+            proxy_pass $pms_config_upstream;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            # `private` et `no-store` valent aussi pour Cloudflare, qui met les
+            # .js en cache d'apres leur extension.
+            add_header Cache-Control "no-store, no-cache, must-revalidate, private" always;
+            expires -1;
         }
 
         # Frontend React (PMS)
