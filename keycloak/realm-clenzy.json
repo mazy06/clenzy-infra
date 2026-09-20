@@ -23,17 +23,31 @@
           "temporary": false
         }
       ],
-      "realmRoles": ["ADMIN"]
+      "realmRoles": [
+        "ADMIN"
+      ]
     }
   ],
   "roles": {
     "realm": [
-      {"name": "ADMIN"},
-      {"name": "MANAGER"},
-      {"name": "HOST"},
-      {"name": "TECHNICIAN"},
-      {"name": "HOUSEKEEPER"},
-      {"name": "SUPERVISOR"}
+      {
+        "name": "ADMIN"
+      },
+      {
+        "name": "MANAGER"
+      },
+      {
+        "name": "HOST"
+      },
+      {
+        "name": "TECHNICIAN"
+      },
+      {
+        "name": "HOUSEKEEPER"
+      },
+      {
+        "name": "SUPERVISOR"
+      }
     ]
   },
   "clients": [
@@ -47,9 +61,26 @@
       "directAccessGrantsEnabled": true,
       "standardFlowEnabled": true,
       "secret": "clenzy-secret",
-      "redirectUris": ["*"],
-      "webOrigins": ["*"],
-      "enabled": true
+      "redirectUris": [
+        "*"
+      ],
+      "webOrigins": [
+        "*"
+      ],
+      "enabled": true,
+      "protocolMappers": [
+        {
+          "name": "audience-clenzy-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "clenzy-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
     },
     {
       "clientId": "clenzy-web",
@@ -71,13 +102,28 @@
         "http://localhost:3001",
         "https://app.clenzy.fr"
       ],
-      "enabled": true
+      "enabled": true,
+      "protocolMappers": [
+        {
+          "name": "audience-clenzy-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "clenzy-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
     }
   ],
   "scopeMappings": [
     {
       "clientScope": "clenzy-api",
-      "roles": ["ADMIN"]
+      "roles": [
+        "ADMIN"
+      ]
     }
   ],
   "clientScopeMappings": {
@@ -92,5 +138,12 @@
         ]
       }
     ]
-  }
+  },
+  "internationalizationEnabled": true,
+  "supportedLocales": [
+    "fr",
+    "en",
+    "ar"
+  ],
+  "defaultLocale": "fr"
 }
