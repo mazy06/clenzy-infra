@@ -29,11 +29,12 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: "Instance a deployer (environnement GitHub)"
+        description: "Instance a deployer"
         required: true
-        default: 'production'
+        default: 'all'
         type: choice
         options:
+          - all
           - production
           - production-baitly
       deploy_mode:
@@ -81,28 +82,60 @@ permissions:
 # l'ancien ID -> « No such container » -> echec). cancel-in-progress: false => file d'attente
 # (le 2e attend la fin du 1er) ; NE JAMAIS passer a true (annuler un deploy en cours peut
 # laisser la prod incoherente). Observe 3 echecs les 2026-06-18/19.
-# La cle de file d'attente est PAR INSTANCE : deux instances vivent sur deux VPS
-# distincts et n'ont aucune raison de se bloquer mutuellement. En revanche deux
-# deploiements de la MEME instance doivent rester serialises.
-concurrency:
-  group: cd-deploy-${{ github.event.inputs.target || github.event.client_payload.target || 'production' }}
-  cancel-in-progress: false
-
 jobs:
-  deploy:
-    name: Deploy Infrastructure
+  # Decide QUELLES instances deployer.
+  #
+  # Une cible explicite (workflow_dispatch, ou repository_dispatch qui la porte)
+  # ne deploie que celle-la. Sinon — un merge sur `production`, ou un dispatch de
+  # la CI applicative — TOUTES les instances partent : elles servent le meme code,
+  # les laisser diverger serait la vraie surprise.
+  plan:
+    name: Cibles a deployer
     runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.resolve.outputs.targets }}
+    steps:
+      - id: resolve
+        env:
+          INPUT_TARGET: ${{ github.event.inputs.target }}
+          PAYLOAD_TARGET: ${{ github.event.client_payload.target }}
+        run: |
+          set -euo pipefail
+          if [ "${INPUT_TARGET:-}" = "all" ]; then
+            targets='["production","production-baitly"]'
+          elif [ -n "${INPUT_TARGET:-}" ]; then
+            targets="[\"${INPUT_TARGET}\"]"
+          elif [ -n "${PAYLOAD_TARGET:-}" ]; then
+            targets="[\"${PAYLOAD_TARGET}\"]"
+          else
+            targets='["production","production-baitly"]'
+          fi
+          echo "Cibles : ${targets}"
+          echo "targets=${targets}" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    name: Deploy ${{ matrix.target }}
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      # Une instance en echec ne doit pas empecher l'autre d'etre deployee :
+      # elles sont independantes, sur deux VPS distincts.
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.plan.outputs.targets) }}
+    # La file d'attente est PAR INSTANCE : deux VPS distincts n'ont aucune raison
+    # de se bloquer mutuellement, mais deux deploiements de la MEME instance
+    # doivent rester serialises. cancel-in-progress reste false : annuler un
+    # deploiement en cours peut laisser la prod incoherente.
+    concurrency:
+      group: cd-deploy-${{ matrix.target }}
+      cancel-in-progress: false
     # L'environnement GitHub porte TOUT ce qui distingue une instance : VPS_HOST,
     # VPS_USER, VPS_SSH_KEY, VPS_INFRA_DIR et PROD_ENV_FILE_B64. Ajouter une
-    # instance = creer un environnement, pas dupliquer ce workflow.
-    #
-    # Defaut deliberement 'production' : un merge sur la branche `production` ne
-    # deploie QUE clenzy.fr. baitly.fr se declenche explicitement (workflow_dispatch
-    # avec target, ou repository_dispatch portant client_payload.target). Pour que
-    # les deux partent sur merge, il faudrait une matrice — changement volontaire,
-    # pas un effet de bord.
+    # instance = creer un environnement et l'ajouter au job `plan`, pas dupliquer
+    # ce workflow.
     environment:
-      name: ${{ github.event.inputs.target || github.event.client_payload.target || 'production' }}
+      name: ${{ matrix.target }}
 
     steps:
       # PAS de actions/checkout : aucune etape de ce job ne lit le depot — c'est le
