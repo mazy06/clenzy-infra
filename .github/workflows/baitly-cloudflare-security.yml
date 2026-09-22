@@ -1,0 +1,37 @@
+name: Baitly Cloudflare Security
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Read-only check, apply reviewed rules, or disable Baitly rules
+        type: choice
+        options: [check, apply, disable]
+        default: check
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: baitly-cloudflare-security
+  cancel-in-progress: false
+jobs:
+  security:
+    if: github.ref == 'refs/heads/production'
+    runs-on: ubuntu-latest
+    environment: production-baitly
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check or apply the reviewed Free plan rules
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ZONE_ID: ${{ vars.CLOUDFLARE_ZONE_ID }}
+          MODE: ${{ inputs.mode }}
+        run: python3 scripts/baitly-cloudflare.py --zone baitly.fr --mode "$MODE"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cloudflare-before
+          path: baitly-cloudflare-before.json
+          retention-days: 7

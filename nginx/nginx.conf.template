@@ -12,12 +12,14 @@ http {
     include /etc/nginx/mime.types;
     default_type application/octet-stream;
 
-    # Logging
-    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
-                    '$status $body_bytes_sent "$http_referer" '
-                    '"$http_user_agent" "$http_x_forwarded_for"';
-
-    access_log /var/log/nginx/access.log main;
+    server_tokens off;
+    # No query strings, credentials, cookies, referer or resource tokens in access logs.
+    log_format baitly_security escape=json
+        '{"timestamp":"$time_iso8601","host":"$host","method":"$request_method",'
+        '"path":"$baitly_log_path","status":$status,"upstream_status":"$upstream_status",'
+        '"request_time":$request_time,"client_ip":"$remote_addr",'
+        '"peer_ip":"$realip_remote_addr","cf_ray":"$http_cf_ray"}';
+    access_log /var/log/nginx/access.log baitly_security;
 
     # Docker embedded DNS for dynamic upstream name resolution.
     resolver 127.0.0.11 valid=10s ipv6=off;
@@ -44,6 +46,13 @@ http {
     set_real_ip_from 104.24.0.0/14;
     set_real_ip_from 172.64.0.0/13;
     set_real_ip_from 131.0.72.0/22;
+    set_real_ip_from 2400:cb00::/32;
+    set_real_ip_from 2606:4700::/32;
+    set_real_ip_from 2803:f800::/32;
+    set_real_ip_from 2405:b500::/32;
+    set_real_ip_from 2405:8100::/32;
+    set_real_ip_from 2a06:98c0::/29;
+    set_real_ip_from 2c0f:f248::/32;
     real_ip_header CF-Connecting-IP;
 
     # Performance
@@ -71,14 +80,27 @@ http {
         application/atom+xml
         image/svg+xml;
 
-    # Security headers (globaux - Airbnb Partner compliance)
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
-    add_header Content-Security-Policy "default-src 'self'; media-src 'self' blob:; worker-src 'self' blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src 'self' https://*.${DOMAIN} https://geo.api.gouv.fr https://eu.i.posthog.com https://ipapi.co https://api.stripe.com https://open.er-api.com; frame-src 'self' blob: https://auth.${DOMAIN} https://js.stripe.com; frame-ancestors 'self' https://auth.${DOMAIN}; object-src 'self' blob:" always;
-    add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
+    # One policy for HTML, assets, runtime config and errors.
+    map $host $baitly_frame_options {
+        default SAMEORIGIN;
+        ${APP_DOMAIN} "";
+        ${AUTH_DOMAIN} "";
+    }
+    map $host $baitly_csp {
+        default "default-src 'self'; media-src 'self' blob:; worker-src 'self' blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src 'self' https://*.${DOMAIN} https://geo.api.gouv.fr https://eu.i.posthog.com https://ipapi.co https://api.stripe.com https://open.er-api.com; frame-src 'self' blob: https://auth.${DOMAIN} https://js.stripe.com https://challenges.cloudflare.com; frame-ancestors 'self' https://auth.${DOMAIN}; object-src 'self' blob:";
+        ${AUTH_DOMAIN} "frame-src 'self'; frame-ancestors 'self' https://${APP_DOMAIN}; object-src 'none'";
+    }
+    include /etc/nginx/baitly/request-maps.conf;
+    include /etc/nginx/baitly/security-headers.conf;
+    geo $realip_remote_addr $baitly_cloudflare_peer {
+        default 0;
+        include /etc/nginx/baitly/cloudflare-networks.conf;
+    }
+    # Staged activation after verified DNS proxy coverage and valid origin certificates.
+    map "${BAITLY_ORIGIN_LOCKDOWN}:$baitly_cloudflare_peer:$baitly_acme_request" $baitly_origin_denied {
+        default 0;
+        "1:0:0" 1;
+    }
 
     # WebSocket : n'envoyer Connection "upgrade" que si le client le demande.
     # Sans ce map, Connection "upgrade" est envoye a chaque requete, ce qui
@@ -93,6 +115,7 @@ http {
     limit_req_zone $binary_remote_addr zone=auth:10m rate=20r/s;
     limit_req_zone $binary_remote_addr zone=general:10m rate=30r/s;
     limit_req_zone $binary_remote_addr zone=monitoring:10m rate=5r/s;
+    limit_req_zone $baitly_login_key zone=baitly_login:10m rate=30r/m;
     limit_req_status 429;
 
     # ==========================================
@@ -148,6 +171,18 @@ http {
         keepalive 16;
     }
 
+    # Reject unknown Host/SNI instead of serving the first public site.
+    server {
+        listen 80 default_server;
+        server_name _;
+        return 444;
+    }
+    server {
+        listen 443 ssl default_server;
+        ssl_reject_handshake on;
+        return 444;
+    }
+
     # ==========================================
     # HTTP → HTTPS redirect (tous les domaines)
     # + ACME challenge Let's Encrypt
@@ -155,6 +190,7 @@ http {
     server {
         listen 80;
         server_name ${DOMAIN} www.${DOMAIN} ${APP_DOMAIN} ${AUTH_DOMAIN} ${MONITORING_DOMAIN} ${PROMETHEUS_DOMAIN} ${KAFKA_UI_DOMAIN} ${SITE_DOMAIN} www.${SITE_DOMAIN};
+        include /etc/nginx/baitly/request-guards.conf;
 
         # Let's Encrypt ACME challenge (doit rester accessible en HTTP)
         location /.well-known/acme-challenge/ {
@@ -174,6 +210,7 @@ http {
         listen 443 ssl;
         http2 on;
         server_name ${DOMAIN} www.${DOMAIN};
+        include /etc/nginx/baitly/request-guards.conf;
 
         # SSL — Let's Encrypt (prod) ou auto-signe (dev)
         # Utiliser le script init-letsencrypt.sh pour generer les certificats Let's Encrypt
@@ -200,10 +237,11 @@ http {
             proxy_pass http://root_site;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
             # `private` et `no-store` valent aussi pour Cloudflare, qui met les
             # .js en cache d'apres leur extension.
+            include /etc/nginx/baitly/security-headers.conf;
             add_header Cache-Control "no-store, no-cache, must-revalidate, private" always;
             expires -1;
         }
@@ -215,13 +253,14 @@ http {
             proxy_pass http://root_site;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
 
             # Cache assets statiques
             location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
                 proxy_pass http://root_site;
                 expires 1y;
+                include /etc/nginx/baitly/security-headers.conf;
                 add_header Cache-Control "public, immutable";
                 access_log off;
             }
@@ -231,17 +270,10 @@ http {
         location /health {
             access_log off;
             return 200 "healthy\n";
+            include /etc/nginx/baitly/security-headers.conf;
             add_header Content-Type text/plain;
         }
 
-        # Sécurité : bloquer les fichiers sensibles.
-        # Exception /.well-known : c'est un chemin PUBLIC normalisé (RFC 8615).
-        # Sans la négation, la landing renvoyait 403 sur /.well-known/api-catalog,
-        # /.well-known/oauth-protected-resource et /.well-known/agent-skills/,
-        # rendant la découverte par les agents impossible.
-        # Même forme que le vhost Keycloak plus bas dans ce fichier.
-        location ~ /\.(?!well-known) { deny all; }
-        location ~ \.(env|log|sql|bak)$ { deny all; }
     }
 
     # ==========================================
@@ -255,6 +287,7 @@ http {
         listen 443 ssl;
         http2 on;
         server_name ${SITE_DOMAIN} www.${SITE_DOMAIN};
+        include /etc/nginx/baitly/request-guards.conf;
 
         ssl_certificate /etc/letsencrypt/live/${CERTBOT_CERT_NAME}/fullchain.pem;
         ssl_certificate_key /etc/letsencrypt/live/${CERTBOT_CERT_NAME}/privkey.pem;
@@ -279,10 +312,11 @@ http {
             proxy_pass http://baitly-site;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
             # `private` et `no-store` valent aussi pour Cloudflare, qui met les
             # .js en cache d'apres leur extension.
+            include /etc/nginx/baitly/security-headers.conf;
             add_header Cache-Control "no-store, no-cache, must-revalidate, private" always;
             expires -1;
         }
@@ -293,12 +327,13 @@ http {
             proxy_pass http://baitly-site;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
 
             location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
                 proxy_pass http://baitly-site;
                 expires 1y;
+                include /etc/nginx/baitly/security-headers.conf;
                 add_header Cache-Control "public, immutable";
                 access_log off;
             }
@@ -307,11 +342,10 @@ http {
         location /health {
             access_log off;
             return 200 "healthy\n";
+            include /etc/nginx/baitly/security-headers.conf;
             add_header Content-Type text/plain;
         }
 
-        location ~ /\. { deny all; }
-        location ~ \.(env|log|sql|bak)$ { deny all; }
     }
 
     # ==========================================
@@ -321,18 +355,8 @@ http {
         listen 443 ssl;
         http2 on;
         server_name ${APP_DOMAIN};
+        include /etc/nginx/baitly/request-guards.conf;
 
-        # Override global X-Frame-Options for PMS app.
-        # X-Frame-Options SAMEORIGIN blocks cross-origin framing (auth.clenzy.fr → app.clenzy.fr).
-        # We rely on CSP frame-ancestors instead (modern standard, supports cross-origin).
-        # Setting to empty string effectively removes the header in this server block.
-        add_header X-Frame-Options "" always;
-        add_header X-XSS-Protection "1; mode=block" always;
-        add_header X-Content-Type-Options "nosniff" always;
-        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
-        add_header Content-Security-Policy "default-src 'self'; media-src 'self' blob:; worker-src 'self' blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src 'self' https://*.${DOMAIN} https://geo.api.gouv.fr https://eu.i.posthog.com https://ipapi.co https://api.stripe.com https://open.er-api.com; frame-src 'self' blob: https://auth.${DOMAIN} https://js.stripe.com; frame-ancestors 'self' https://auth.${DOMAIN}; object-src 'self' blob:" always;
-        add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
 
         # SSL
         ssl_certificate /etc/letsencrypt/live/${CERTBOT_CERT_NAME}/fullchain.pem;
@@ -346,12 +370,13 @@ http {
         # API Backend (Spring Boot)
         location /api/ {
             limit_req zone=api burst=60 nodelay;
+            limit_req zone=baitly_login burst=10 nodelay;
 
             set $pms_backend_upstream http://clenzy-server:8080;
             proxy_pass $pms_backend_upstream;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_set_header X-Forwarded-Host $host;
             proxy_set_header X-Forwarded-Port $server_port;
@@ -375,7 +400,7 @@ http {
             proxy_set_header Connection "upgrade";
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_read_timeout 3600s;
         }
@@ -407,10 +432,11 @@ http {
             proxy_pass $pms_config_upstream;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
             # `private` et `no-store` valent aussi pour Cloudflare, qui met les
             # .js en cache d'apres leur extension.
+            include /etc/nginx/baitly/security-headers.conf;
             add_header Cache-Control "no-store, no-cache, must-revalidate, private" always;
             expires -1;
         }
@@ -421,7 +447,7 @@ http {
             proxy_pass $pms_frontend_upstream;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
 
             # Cache assets statiques
@@ -429,6 +455,7 @@ http {
                 set $pms_frontend_upstream http://clenzy-frontend:80;
                 proxy_pass $pms_frontend_upstream;
                 expires 1y;
+                include /etc/nginx/baitly/security-headers.conf;
                 add_header Cache-Control "public, immutable";
                 access_log off;
             }
@@ -438,12 +465,10 @@ http {
         location /health {
             access_log off;
             return 200 "healthy\n";
+            include /etc/nginx/baitly/security-headers.conf;
             add_header Content-Type text/plain;
         }
 
-        # Sécurité
-        location ~ /\. { deny all; }
-        location ~ \.(env|log|sql|bak)$ { deny all; }
     }
 
     # ==========================================
@@ -453,6 +478,7 @@ http {
         listen 443 ssl;
         http2 on;
         server_name ${AUTH_DOMAIN};
+        include /etc/nginx/baitly/request-guards.conf;
 
         # SSL
         ssl_certificate /etc/letsencrypt/live/${CERTBOT_CERT_NAME}/fullchain.pem;
@@ -463,27 +489,17 @@ http {
         ssl_session_cache shared:SSL:10m;
         ssl_session_timeout 10m;
 
-        # Override global security headers for Keycloak.
-        # app.clenzy.fr loads Keycloak pages in iframes (3p-cookies, silent-check-sso),
-        # so X-Frame-Options must be removed and frame-ancestors must allow the app domain.
-        # We also hide Keycloak's own X-Frame-Options header to avoid conflicts.
-        add_header X-Frame-Options "" always;
-        add_header X-XSS-Protection "1; mode=block" always;
-        add_header X-Content-Type-Options "nosniff" always;
-        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
-        add_header Content-Security-Policy "frame-src 'self'; frame-ancestors 'self' https://${APP_DOMAIN}; object-src 'none'" always;
-        add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
 
         # Keycloak
         location / {
             limit_req zone=auth burst=10 nodelay;
+            limit_req zone=baitly_login burst=10 nodelay;
 
             set $keycloak_upstream http://clenzy-keycloak:8080;
             proxy_pass $keycloak_upstream;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
 
             # Hide Keycloak's own headers that conflict with our nginx-level headers.
@@ -501,8 +517,6 @@ http {
             proxy_read_timeout 60s;
         }
 
-        # Sécurité
-        location ~ /\.(?!well-known) { deny all; }
     }
 
     # ==========================================
@@ -512,6 +526,7 @@ http {
         listen 443 ssl;
         http2 on;
         server_name ${MONITORING_DOMAIN};
+        include /etc/nginx/baitly/request-guards.conf;
 
         # SSL
         ssl_certificate /etc/letsencrypt/live/${CERTBOT_CERT_NAME}/fullchain.pem;
@@ -547,7 +562,7 @@ http {
             proxy_pass $grafana_upstream;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
 
             # WebSocket support (Grafana Live)
@@ -556,8 +571,6 @@ http {
             proxy_set_header Connection $connection_upgrade;
         }
 
-        # Sécurité
-        location ~ /\. { deny all; }
     }
 
     # ==========================================
@@ -567,6 +580,7 @@ http {
         listen 443 ssl;
         http2 on;
         server_name ${PROMETHEUS_DOMAIN};
+        include /etc/nginx/baitly/request-guards.conf;
 
         # SSL
         ssl_certificate /etc/letsencrypt/live/${CERTBOT_CERT_NAME}/fullchain.pem;
@@ -598,12 +612,10 @@ http {
             proxy_pass $prometheus_upstream;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
         }
 
-        # Sécurité
-        location ~ /\. { deny all; }
     }
 
     # ==========================================
@@ -613,6 +625,7 @@ http {
         listen 443 ssl;
         http2 on;
         server_name ${KAFKA_UI_DOMAIN};
+        include /etc/nginx/baitly/request-guards.conf;
 
         # SSL
         ssl_certificate /etc/letsencrypt/live/${CERTBOT_CERT_NAME}/fullchain.pem;
@@ -644,11 +657,9 @@ http {
             proxy_pass $kafka_ui_upstream;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
         }
 
-        # Sécurité
-        location ~ /\. { deny all; }
     }
 }
