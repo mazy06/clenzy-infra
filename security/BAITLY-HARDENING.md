@@ -9,6 +9,7 @@ Ce changement prépare des protections compatibles avec Cloudflare Free. Il ne l
 - IP Cloudflare IPv4 et IPv6 reconnues. Le proxy transmet une IP visiteur canonique au backend ; les en-têtes reçus du client ne servent pas de preuve d'identité.
 - Limite nginx dédiée : 30 requêtes/minute par IP, burst de 10, sur les POST de login/récupération et les actions Keycloak correspondantes. Le refresh de session n'utilise pas ce quota.
 - Access logs JSON avec statut, durée, pair TCP, IP visiteur et Ray ID. Les chemins libres et query strings sont retirés. Le dashboard Grafana `Baitly · Sécurité HTTP` suit les 403, 429 et 5xx via Loki. Les error logs nginx restent un canal distinct à accès restreint : nginx peut y inclure une URI lors d'erreurs upstream.
+- Promtail monte son répertoire de configuration versionné. Le changement de volume et de commande sera appliqué par Compose lors du CD Deploy, ce qui charge le nouveau pipeline `http_status` ; le montage d'un fichier isolé pouvait conserver un ancien inode après le checkout Git.
 - Workflow `Baitly Cloudflare Security` : une règle de fichiers sensibles, une règle de login 10 requêtes/10 secondes, blocage 10 secondes. Aucune règle existante n'est supprimée. Les quotas sont contrôlés et l'état précédent conservé 7 jours dans un artifact privé. La commande `disable` ne désactive que les deux règles Baitly.
 - Protection Keycloak temporaire après 10 échecs, attente croissante jusqu'à 15 minutes, sans verrouillage permanent. Le realm d'import ne modifie pas un realm existant : utiliser le workflow dédié après revue. Les direct grants restent disponibles car l'application les utilise.
 
@@ -34,6 +35,8 @@ Le compte Cloudflare n'a pas été accessible pour cet audit : règles gérées 
 ## Vérification et retour arrière
 
 `Baitly Security Regression` compile un nginx isolé depuis une archive à SHA-256 fixé et teste le template réel, sans Docker. La suite couvre les sondes encodées, les chemins de découverte, les headers, les logs, les quotas Free, la préservation des règles tierces et l'origine. Les tests Java et les builds des deux frontends sont portés par la PR PMS.
+
+La suite résout aussi le Compose de production avec des valeurs factices via `docker compose config`, sans contacter le daemon ni démarrer de conteneur. Elle vérifie la propagation du flag CAPTCHA et de la clé publique aux deux interfaces, la présence de la clé privée uniquement côté serveur et le chemin de configuration monté de Promtail.
 
 Retour arrière par PR/revert et CD Deploy. Pour une difficulté d'activation CAPTCHA, remettre le flag commun à `false` via la configuration CI et redéployer les trois services applicatifs ensemble. Pour le verrouillage origine, remettre le flag à `0` via CI. Le workflow Cloudflare `disable` est disponible pour ses deux règles. Les ajustements Keycloak doivent repasser par une modification revue du workflow/script. Ne pas opérer directement sur le VPS.
 

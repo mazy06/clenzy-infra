@@ -781,6 +781,7 @@ services:
       VITE_POSTHOG_KEY: ${VITE_POSTHOG_KEY:-}
       VITE_POSTHOG_HOST: ${VITE_POSTHOG_HOST:-}
       VITE_MAPBOX_TOKEN: ${VITE_MAPBOX_TOKEN:-}
+      VITE_BAITLY_CAPTCHA_ENABLED: ${BAITLY_CAPTCHA_ENABLED:-false}
       VITE_TURNSTILE_SITE_KEY: ${VITE_TURNSTILE_SITE_KEY:-}
       VITE_CRISP_WEBSITE_ID: ${VITE_CRISP_WEBSITE_ID:-}
     expose:
@@ -919,10 +920,11 @@ services:
     environment:
       DOCKER_API_VERSION: "1.44"
     volumes:
-      - ./monitoring/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      # Monter le repertoire evite de conserver l'ancien inode apres un git checkout.
+      - ./monitoring/promtail:/etc/promtail:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
-    command: -config.file=/etc/promtail/config.yml
+    command: -config.file=/etc/promtail/promtail-config.yml
     depends_on:
       loki:
         condition: service_healthy
