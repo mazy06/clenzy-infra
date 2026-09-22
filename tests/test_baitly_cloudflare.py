@@ -35,6 +35,9 @@ class CloudflareSecurity(unittest.TestCase):
         desired = cf.desired_rules('baitly.fr')
         snapshots = {phase: {'id': phase, 'rules': [{'id': 'other', 'ref': 'unrelated'}, {**rule, 'id': 'owned'}]}
                      for phase, rule in desired.items()}
+        snapshots['http_ratelimit']['rules'][1]['ratelimit'] = {
+            **desired['http_ratelimit']['ratelimit'], 'requests_to_origin': False,
+        }
         api = Mock()
         cf.reconcile(api, 'zone', desired, snapshots)
         api.call.assert_not_called()

@@ -14,6 +14,13 @@ import urllib.request
 PHASES = {'http_request_firewall_custom': 5, 'http_ratelimit': 1}
 
 
+def matches(actual, expected):
+    """Cloudflare adds default fields to nested objects when reading a rule back."""
+    if isinstance(expected, dict):
+        return isinstance(actual, dict) and all(matches(actual.get(key), value) for key, value in expected.items())
+    return actual == expected
+
+
 def desired_rules(zone):
     if not re.fullmatch(r'[a-z0-9-]+(?:\.[a-z0-9-]+)+', zone):
         raise ValueError('Invalid zone name')
@@ -85,7 +92,7 @@ def reconcile(api, zone_id, desired, snapshots, disable=False):
             if current:
                 api.call('PATCH', f'/zones/{zone_id}/rulesets/{state["id"]}/rules/{current["id"]}', {'enabled': False})
             continue
-        if current and all(current.get(key) == value for key, value in rule.items()):
+        if current and matches(current, rule):
             continue
         if state is None:
             api.call('POST', f'/zones/{zone_id}/rulesets', {
@@ -127,7 +134,7 @@ def main():
         for phase, expected in desired.items():
             actual = api.call('GET', f'/zones/{zone_id}/rulesets/phases/{phase}/entrypoint')
             owned = next((r for r in (actual or {}).get('rules', []) if r.get('ref') == expected['ref']), None)
-            if args.mode == 'apply' and (not owned or any(owned.get(k) != v for k, v in expected.items())):
+            if args.mode == 'apply' and not matches(owned, expected):
                 raise RuntimeError('Cloudflare rule verification failed; inspect the saved snapshot')
             if args.mode == 'disable' and owned and owned.get('enabled'):
                 raise RuntimeError('Cloudflare rule still enabled')
