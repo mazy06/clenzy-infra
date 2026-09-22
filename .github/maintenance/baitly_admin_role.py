@@ -51,7 +51,7 @@ $KCADM config credentials --config "$CONFIG" --server http://localhost:8080 \\
         if body is not None:
             script += ' -f "$BODY"'
         output = run(COMPOSE + ["exec", "-T", "keycloak", "sh", "-s"], script + "\n")
-        return json.loads(output) if output else None
+        return json.loads(output) if args[0] == "get" and output else None
 
     def sql(self, query, **variables):
         args = ["psql", "-X", "-qAt", "-v", "ON_ERROR_STOP=1"]
@@ -150,8 +150,15 @@ def repair(ops, apply=False, expected_subject="", expected_role=""):
         # The deployment's Keycloak rejects role lookup by name; resolve the list instead.
         roles = ops.keycloak(["get", "roles", "-r", REALM])
         targets = [r for r in roles if r.get("name") == ROLE and not r.get("clientRole")]
+        if not targets:
+            # Fresh instances still import the legacy ADMIN role. The PMS expects
+            # this explicit realm role; creating it grants nobody any rights.
+            ops.keycloak(["create", "roles", "-r", REALM],
+                         {"name": ROLE, "description": "Baitly platform administrator"})
+            roles = ops.keycloak(["get", "roles", "-r", REALM])
+            targets = [r for r in roles if r.get("name") == ROLE and not r.get("clientRole")]
         if len(targets) != 1:
-            raise RepairError("SUPER_ADMIN realm role is missing or ambiguous; no change applied")
+            raise RepairError("SUPER_ADMIN realm role is missing or ambiguous; account role not changed")
         ops.keycloak(["create", f"users/{subject}/role-mappings/realm", "-r", REALM],
                      [{"id": targets[0]["id"], "name": ROLE}])
     if profile and profile["role"] != ROLE:

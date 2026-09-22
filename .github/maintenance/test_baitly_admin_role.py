@@ -31,6 +31,10 @@ class FakeProduction:
             return copy.deepcopy(self.accounts)
         if args[:2] == ["get", "roles"]:
             return self.available
+        if args[:2] == ["create", "roles"]:
+            self.writes.append(("realm-role", body))
+            self.available = [{"id": OTHER, "name": ROLE, "clientRole": False}]
+            return None
         if args[0] == "get" and args[1].endswith("/composite"):
             return [{"name": role} for role in self.roles]
         if args[0] == "create":
@@ -116,9 +120,25 @@ class AdminRoleTests(unittest.TestCase):
         self.ops.users[0]["emailHash"] = "different"
         self.assert_blocked("conflicting identity")
 
-    def test_missing_realm_role_is_not_created(self):
+    def test_missing_realm_role_is_created_before_assigning_only_admin(self):
         self.ops.available = []
-        self.assert_blocked("realm role is missing")
+        result = self.execute()
+        self.assertTrue(result["keycloakSuperAdmin"])
+        self.assertEqual(["realm-role", "keycloak", "pms", "cache"], [w[0] for w in self.ops.writes])
+        self.assertEqual(ROLE, self.ops.writes[0][1]["name"])
+
+    def test_diagnosis_never_creates_missing_realm_role(self):
+        self.ops.available = []
+        self.execute(apply=False)
+        self.assertEqual([], self.ops.writes)
+
+    def test_keycloak_write_confirmation_is_not_parsed_as_json(self):
+        with patch("baitly_admin_role.run", return_value="Created new role with id 123"):
+            self.assertIsNone(Production().keycloak(["create", "roles", "-r", "clenzy"], {"name": ROLE}))
+
+    def test_ambiguous_realm_role_is_not_assigned(self):
+        self.ops.available *= 2
+        self.assert_blocked("realm role is missing or ambiguous")
 
     def test_existing_profile_and_realm_role_are_promoted_together(self):
         result = self.execute()
