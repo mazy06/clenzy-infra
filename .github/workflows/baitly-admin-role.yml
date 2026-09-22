@@ -1,0 +1,72 @@
+name: Baitly Admin Role
+
+on:
+  pull_request:
+    paths:
+      - '.github/maintenance/baitly_admin_role.py'
+      - '.github/maintenance/test_baitly_admin_role.py'
+      - '.github/workflows/baitly-admin-role.yml'
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Promote only admin on app.baitly.fr (false = diagnosis only)
+        type: boolean
+        default: false
+      expected_keycloak_id:
+        description: Exact Keycloak ID from the read-only diagnosis (required to apply)
+        type: string
+      expected_pms_role:
+        description: PMS role from the diagnosis, or ABSENT (required to apply)
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test identity, instance and role guards
+        run: python3 -B -m unittest discover -s .github/maintenance -p test_baitly_admin_role.py -v
+  admin:
+    needs: verify
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/production'
+    runs-on: ubuntu-latest
+    environment: production-baitly
+    concurrency:
+      group: cd-deploy-production-baitly
+      cancel-in-progress: false
+    steps:
+      - name: Diagnose or promote admin on Baitly only
+        uses: appleboy/ssh-action@v1
+        env:
+          INFRA_DIR_VALUE: ${{ vars.VPS_INFRA_DIR }}
+          DEPLOY_SHA: ${{ github.sha }}
+          BAITLY_ADMIN_APPLY: ${{ inputs.apply }}
+          BAITLY_ADMIN_SUBJECT: ${{ inputs.expected_keycloak_id }}
+          BAITLY_ADMIN_PREVIOUS_ROLE: ${{ inputs.expected_pms_role }}
+        with:
+          host: ${{ secrets.VPS_HOST != '' && secrets.VPS_HOST || vars.VPS_HOST }}
+          username: ${{ secrets.VPS_USER != '' && secrets.VPS_USER || vars.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          envs: INFRA_DIR_VALUE,DEPLOY_SHA,BAITLY_ADMIN_APPLY,BAITLY_ADMIN_SUBJECT,BAITLY_ADMIN_PREVIOUS_ROLE
+          command_timeout: 5m
+          script: |
+            set -eu
+            set +x
+            cd "${INFRA_DIR_VALUE:-$HOME/clenzy-infra}"
+            git fetch origin production
+            git merge-base --is-ancestor "$DEPLOY_SHA" origin/production
+            SCRIPT=$(mktemp)
+            trap 'rm -f "$SCRIPT"' EXIT
+            git show "$DEPLOY_SHA:.github/maintenance/baitly_admin_role.py" > "$SCRIPT"
+            set -a
+            . ./.env
+            set +a
+            if [ "$BAITLY_ADMIN_APPLY" = true ]; then
+              python3 "$SCRIPT" --apply --expected-keycloak-id "$BAITLY_ADMIN_SUBJECT" \
+                --expected-pms-role "$BAITLY_ADMIN_PREVIOUS_ROLE"
+            else
+              python3 "$SCRIPT"
+            fi
