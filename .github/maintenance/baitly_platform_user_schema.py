@@ -1,11 +1,14 @@
 """Apply the reviewed Baitly platform-user Liquibase repair, without a deployment."""
 
 import argparse
+import base64
 import hashlib
+import json
 import os
 from pathlib import Path
 import subprocess
 import tempfile
+import urllib.request
 
 
 APP_COMMIT = "a1453b31fc62a7ce4d38f9f96c88db356cee26f7"
@@ -30,7 +33,7 @@ def run(*args, env=None):
 def validate_environment(env):
     if env.get("APP_DOMAIN") != "app.baitly.fr":
         raise ValueError("This repair is restricted to app.baitly.fr")
-    for key in ("POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB"):
+    for key in ("POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB", "BAITLY_APP_GIT_TOKEN"):
         if not env.get(key):
             raise ValueError(f"Required database setting missing: {key}")
     # Database name is used in a JDBC path. Reject URL parameters and shell syntax.
@@ -39,16 +42,30 @@ def validate_environment(env):
         raise ValueError("Unexpected database name")
 
 
-def export_migration(app_repo, destination):
-    run("git", "-C", str(app_repo), "fetch", "origin", "main")
-    run("git", "-C", str(app_repo), "merge-base", "--is-ancestor", APP_COMMIT, "origin/main")
+def github_json(path, token):
+    request = urllib.request.Request(
+        "https://api.github.com/repos/mazy06/clenzy/" + path,
+        headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
+                 "X-GitHub-Api-Version": "2022-11-28"},
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return json.load(response)
+
+
+def export_migration(destination, token):
+    comparison = github_json(f"compare/{APP_COMMIT}...main", token)
+    if comparison.get("status") not in ("ahead", "identical"):
+        raise ValueError("The reviewed application commit must be merged into main")
     for name, expected in FILE_HASHES.items():
-        content = run("git", "-C", str(app_repo), "show", f"{APP_COMMIT}:server/src/main/resources/{name}")
-        if hashlib.sha256(content.encode()).hexdigest() != expected:
+        resource = github_json(f"contents/server/src/main/resources/{name}?ref={APP_COMMIT}", token)
+        if resource.get("encoding") != "base64":
+            raise ValueError("Unexpected GitHub content encoding")
+        content = base64.b64decode(resource["content"])
+        if hashlib.sha256(content).hexdigest() != expected:
             raise ValueError(f"Reviewed migration digest mismatch: {name}")
         path = destination / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content)
+        path.write_bytes(content)
         path.chmod(0o644)
     # The Liquibase image runs as a non-root user.
     destination.chmod(0o755)
@@ -100,10 +117,9 @@ def verify_applied(infra_dir, env):
 
 def execute(infra_dir, env, apply=False):
     validate_environment(env)
-    app_repo = infra_dir.parent / "clenzy"
     with tempfile.TemporaryDirectory(prefix="baitly-staff-schema-") as temporary:
         resources = Path(temporary)
-        export_migration(app_repo, resources)
+        export_migration(resources, env["BAITLY_APP_GIT_TOKEN"])
         liquibase(resources, env, "validate")
         liquibase(resources, env, "status")
         print(f"Validated reviewed migration {CHANGESET} at {APP_COMMIT} for app.baitly.fr.")
