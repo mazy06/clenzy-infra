@@ -1,4 +1,12 @@
 {
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "failureFactor": 10,
+  "waitIncrementSeconds": 60,
+  "maxFailureWaitSeconds": 900,
+  "quickLoginCheckMilliSeconds": 1000,
+  "minimumQuickLoginWaitSeconds": 60,
+  "maxDeltaTimeSeconds": 43200,
   "realm": "clenzy",
   "enabled": true,
   "accessTokenLifespan": 86400,
@@ -54,7 +62,7 @@
     {
       "clientId": "clenzy-api",
       "protocol": "openid-connect",
-      "name": "Clenzy API",
+      "name": "Baitly API",
       "publicClient": false,
       "serviceAccountsEnabled": true,
       "authorizationServicesEnabled": false,
@@ -85,7 +93,7 @@
     {
       "clientId": "clenzy-web",
       "protocol": "openid-connect",
-      "name": "Clenzy Web",
+      "name": "Baitly Web",
       "publicClient": true,
       "serviceAccountsEnabled": false,
       "authorizationServicesEnabled": false,

@@ -35,3 +35,8 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Local regression test artifacts and Cloudflare snapshots
+__pycache__/
+*.pyc
+baitly-cloudflare-before.json
