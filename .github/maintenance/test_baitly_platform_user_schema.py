@@ -1,3 +1,4 @@
+import base64
 import hashlib
 from pathlib import Path
 import tempfile
@@ -8,7 +9,8 @@ import baitly_platform_user_schema as repair
 
 
 ENV = {"APP_DOMAIN": "app.baitly.fr", "POSTGRES_DB": "baitly_prod",
-       "POSTGRES_USER": "test_user", "POSTGRES_PASSWORD": "test_secret"}
+       "POSTGRES_USER": "test_user", "POSTGRES_PASSWORD": "test_secret",
+       "BAITLY_APP_GIT_TOKEN": "test_token"}
 
 
 class PlatformUserSchemaTest(unittest.TestCase):
@@ -25,17 +27,26 @@ class PlatformUserSchemaTest(unittest.TestCase):
 
     def test_source_is_merged_immutable_commit_and_files_are_verified(self):
         body = "reviewed migration\n"
-        with tempfile.TemporaryDirectory() as directory, patch.object(repair, "run", return_value=body) as run, \
+        responses = [{"status": "ahead"}, {"encoding": "base64", "content": base64.b64encode(body.encode()).decode()}]
+        with tempfile.TemporaryDirectory() as directory, patch.object(repair, "github_json", side_effect=responses) as get, \
                 patch.object(repair, "FILE_HASHES", {repair.SQL_FILE: hashlib.sha256(body.encode()).hexdigest()}):
-            repair.export_migration(Path("/repo"), Path(directory))
-            run.assert_any_call("git", "-C", "/repo", "merge-base", "--is-ancestor", repair.APP_COMMIT, "origin/main")
-            run.assert_any_call("git", "-C", "/repo", "show", f"{repair.APP_COMMIT}:server/src/main/resources/{repair.SQL_FILE}")
+            repair.export_migration(Path(directory), "test_token")
+            get.assert_any_call(f"compare/{repair.APP_COMMIT}...main", "test_token")
+            get.assert_any_call(f"contents/server/src/main/resources/{repair.SQL_FILE}?ref={repair.APP_COMMIT}", "test_token")
             self.assertEqual((Path(directory) / repair.SQL_FILE).read_text(), body)
 
     def test_digest_mismatch_stops_export(self):
-        with tempfile.TemporaryDirectory() as directory, patch.object(repair, "run", return_value="changed SQL"):
+        responses = [{"status": "ahead"}, {"encoding": "base64", "content": base64.b64encode(b"changed SQL").decode()}]
+        with tempfile.TemporaryDirectory() as directory, patch.object(repair, "github_json", side_effect=responses):
             with self.assertRaises(ValueError):
-                repair.export_migration(Path("/repo"), Path(directory))
+                repair.export_migration(Path(directory), "test_token")
+
+    def test_unmerged_application_commit_is_rejected(self):
+        for status in ("behind", "diverged", None):
+            with self.subTest(status=status), patch.object(repair, "github_json", return_value={"status": status}) as get:
+                with self.assertRaises(ValueError):
+                    repair.export_migration(Path("/tmp"), "test_token")
+                self.assertEqual(get.call_count, 1)
 
     def test_dry_run_does_not_update(self):
         with patch.object(repair, "export_migration"), patch.object(repair, "liquibase") as lb, \

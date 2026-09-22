@@ -38,12 +38,13 @@ jobs:
           INFRA_DIR_VALUE: ${{ vars.VPS_INFRA_DIR }}
           DEPLOY_SHA: ${{ github.sha }}
           BAITLY_SCHEMA_APPLY: ${{ inputs.apply }}
+          BAITLY_APP_GIT_TOKEN: ${{ secrets.CLENZY_APP_GIT_TOKEN || secrets.GHCR_TOKEN }}
         with:
           host: ${{ secrets.VPS_HOST != '' && secrets.VPS_HOST || vars.VPS_HOST }}
           username: ${{ secrets.VPS_USER != '' && secrets.VPS_USER || vars.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT || 22 }}
-          envs: INFRA_DIR_VALUE,DEPLOY_SHA,BAITLY_SCHEMA_APPLY
+          envs: INFRA_DIR_VALUE,DEPLOY_SHA,BAITLY_SCHEMA_APPLY,BAITLY_APP_GIT_TOKEN
           command_timeout: 10m
           script: |
             set -eu
