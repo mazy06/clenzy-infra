@@ -46,3 +46,12 @@ scrape_configs:
             - labels:
                 level:
                 logger:
+      # Low-cardinality status only; IP, ray, host and URI never become Loki labels.
+      - match:
+          selector: '{service="nginx"}'
+          stages:
+            - json:
+                expressions:
+                  http_status: status
+            - labels:
+                http_status:

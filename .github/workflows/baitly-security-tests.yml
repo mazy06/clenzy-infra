@@ -1,0 +1,36 @@
+name: Baitly Security Regression
+on:
+  pull_request:
+    paths: ['nginx/**', 'scripts/baitly-*', 'tests/**', 'docker-compose.prod.yml', 'keycloak/baitly-*', '.github/workflows/baitly-*']
+  push:
+    branches: [main, production]
+    paths: ['nginx/**', 'scripts/baitly-*', 'tests/**', 'docker-compose.prod.yml', 'keycloak/baitly-*', '.github/workflows/baitly-*']
+permissions:
+  contents: read
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build isolated nginx test binary
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libpcre2-dev libssl-dev zlib1g-dev
+          curl --fail --silent --show-error --location https://nginx.org/download/nginx-1.28.0.tar.gz -o /tmp/nginx.tar.gz
+          echo 'c6b5c6b086c0df9d3ca3ff5e084c1d0ef909e6038279c71c1c3e985f576ff76a  /tmp/nginx.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/nginx.tar.gz -C /tmp
+          cd /tmp/nginx-1.28.0
+          ./configure --prefix=/tmp/baitly-nginx --with-http_ssl_module --with-http_v2_module --with-http_realip_module --with-http_auth_request_module > /tmp/nginx-configure.log
+          make -j2 > /tmp/nginx-build.log
+      - name: Run behavioral regression tests
+        env:
+          NGINX_BINARY: /tmp/nginx-1.28.0/objs/nginx
+        run: python3 -B -m unittest discover -s tests -p 'test_baitly_*.py' -v
+      - name: Check deployment shell syntax
+        run: |
+          for script in scripts/deploy.sh scripts/baitly-security-preflight.sh keycloak/baitly-brute-force.sh; do
+            bash -n "$script"
+          done

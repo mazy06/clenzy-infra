@@ -1,0 +1,19 @@
+{
+  "status": "awaiting-administrator-identities-and-mfa-provider",
+  "allowed_emails": [],
+  "session_duration": "1h",
+  "require": [{"auth_method": {"auth_method": "mfa"}}],
+  "applications": [
+    {"name": "Baitly Grafana", "domain": "monitoring.baitly.fr", "type": "self_hosted"},
+    {"name": "Baitly Prometheus", "domain": "prometheus.baitly.fr", "type": "self_hosted"},
+    {"name": "Baitly Kafka UI", "domain": "kafka.baitly.fr", "type": "self_hosted"},
+    {"name": "Baitly Keycloak administration", "domain": "auth.baitly.fr/admin", "type": "self_hosted"}
+  ],
+  "prerequisites": [
+    "Confirm the deployed administration domains and authorized email addresses.",
+    "Verify the selected identity provider reports the mfa authentication method before enforcing it.",
+    "Inventory service clients that call these public administration URLs.",
+    "Bind origin access to this Cloudflare account using a Tunnel or dedicated authenticated origin pulls, or validate Access JWTs at the origin.",
+    "Create and review a separate CI provisioning change once these identities are known. This file is a plan, not an Access API payload."
+  ]
+}

@@ -1,5 +1,5 @@
 # ===========================================
-# Clenzy - Docker Compose PRODUCTION
+# Baitly - Docker Compose PRODUCTION
 # ===========================================
 # Usage: docker compose -f docker-compose.prod.yml --env-file .env up -d
 #
@@ -38,7 +38,8 @@ services:
       # DOIT figurer dans NGINX_ENVSUBST_FILTER, sinon nginx recoit le litteral
       # ${ROOT_SITE_SERVER} comme nom d'upstream et refuse de demarrer.
       ROOT_SITE_SERVER: ${ROOT_SITE_SERVER:-clenzy-landing}
-      NGINX_ENVSUBST_FILTER: ^(DOMAIN|APP_DOMAIN|AUTH_DOMAIN|MONITORING_DOMAIN|PROMETHEUS_DOMAIN|KAFKA_UI_DOMAIN|SITE_DOMAIN|CERTBOT_CERT_NAME|ROOT_SITE_SERVER)$
+      BAITLY_ORIGIN_LOCKDOWN: ${BAITLY_ORIGIN_LOCKDOWN:-0}
+      NGINX_ENVSUBST_FILTER: ^(DOMAIN|APP_DOMAIN|AUTH_DOMAIN|MONITORING_DOMAIN|PROMETHEUS_DOMAIN|KAFKA_UI_DOMAIN|SITE_DOMAIN|CERTBOT_CERT_NAME|ROOT_SITE_SERVER|BAITLY_ORIGIN_LOCKDOWN)$
       NGINX_ENVSUBST_TEMPLATE_DIR: /etc/nginx/templates
       NGINX_ENVSUBST_TEMPLATE_SUFFIX: .template
       NGINX_ENVSUBST_OUTPUT_DIR: /etc/nginx
@@ -46,6 +47,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
+      - ./nginx/baitly:/etc/nginx/baitly:ro
       - ./nginx/nginx.conf.template:/etc/nginx/templates/nginx.conf.template:ro
       - ./nginx/.htpasswd:/etc/nginx/.htpasswd:ro
       - ./nginx/ssl:/etc/nginx/ssl:ro
@@ -115,6 +117,8 @@ services:
       # PMS vers lequel la landing renvoie. Avant, ces deux URL etaient gravees
       # au build et l'image publiee pointait sur http://localhost:8084 — la
       # landing ne pouvait joindre aucune API en production.
+      VITE_BAITLY_CAPTCHA_ENABLED: ${BAITLY_CAPTCHA_ENABLED:-false}
+      VITE_TURNSTILE_SITE_KEY: ${VITE_TURNSTILE_SITE_KEY:-}
       VITE_API_URL: https://${APP_DOMAIN:-app.clenzy.fr}
       VITE_APP_URL: https://${APP_DOMAIN:-app.clenzy.fr}
     expose:
@@ -469,6 +473,9 @@ services:
     container_name: clenzy-server-prod
     restart: unless-stopped
     environment:
+      BAITLY_CAPTCHA_ENABLED: ${BAITLY_CAPTCHA_ENABLED:-false}
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
+      TURNSTILE_ALLOWED_HOSTNAMES: ${TURNSTILE_ALLOWED_HOSTNAMES:-}
       SPRING_PROFILES_ACTIVE: prod
       SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
       # Liquibase reactive (Phase 5b, 2026-05-21) apres :
@@ -774,6 +781,7 @@ services:
       VITE_POSTHOG_KEY: ${VITE_POSTHOG_KEY:-}
       VITE_POSTHOG_HOST: ${VITE_POSTHOG_HOST:-}
       VITE_MAPBOX_TOKEN: ${VITE_MAPBOX_TOKEN:-}
+      VITE_BAITLY_CAPTCHA_ENABLED: ${BAITLY_CAPTCHA_ENABLED:-false}
       VITE_TURNSTILE_SITE_KEY: ${VITE_TURNSTILE_SITE_KEY:-}
       VITE_CRISP_WEBSITE_ID: ${VITE_CRISP_WEBSITE_ID:-}
     expose:
@@ -912,10 +920,11 @@ services:
     environment:
       DOCKER_API_VERSION: "1.44"
     volumes:
-      - ./monitoring/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      # Monter le repertoire evite de conserver l'ancien inode apres un git checkout.
+      - ./monitoring/promtail:/etc/promtail:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
-    command: -config.file=/etc/promtail/config.yml
+    command: -config.file=/etc/promtail/promtail-config.yml
     depends_on:
       loki:
         condition: service_healthy

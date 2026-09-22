@@ -1,6 +1,6 @@
 #!/bin/bash
 # ===========================================
-# Clenzy — Deploy Script
+# Baitly — Deploy Script
 # ===========================================
 # Logique de deploiement extraite du workflow CD.
 # Execute par cd-deploy.yml apres git pull et provisioning .env.
@@ -15,6 +15,9 @@
 #   - DEPLOY_SERVICES : liste de services separee par virgule (optionnel)
 
 set -e
+
+# Validate security activation before changing containers or host state.
+bash scripts/baitly-security-preflight.sh
 
 DC="docker compose -f docker-compose.prod.yml --env-file .env"
 
@@ -571,7 +574,7 @@ fi
 # ===========================================
 
 echo ""
-echo "🔍 Diagnostic permissions (base Clenzy)..."
+echo "🔍 Diagnostic permissions (base Baitly)..."
 echo "   Nombre de permissions en base :"
 $DC exec -T postgres psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -tAc \
   "SELECT count(*) FROM permissions;" 2>/dev/null || echo "   ⚠️  Impossible de compter les permissions"

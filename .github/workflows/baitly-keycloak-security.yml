@@ -1,0 +1,39 @@
+name: Baitly Keycloak Security
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Apply temporary brute-force protection to the PMS realm
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: baitly-keycloak-security
+  cancel-in-progress: false
+jobs:
+  security:
+    if: github.ref == 'refs/heads/production'
+    runs-on: ubuntu-latest
+    environment: production-baitly
+    steps:
+      - name: Apply reviewed configuration without restarting containers
+        uses: appleboy/ssh-action@v1
+        env:
+          INFRA_DIR_VALUE: ${{ vars.VPS_INFRA_DIR }}
+          DEPLOY_SHA: ${{ github.sha }}
+          APPLY: ${{ inputs.apply }}
+        with:
+          host: ${{ secrets.VPS_HOST != '' && secrets.VPS_HOST || vars.VPS_HOST }}
+          username: ${{ secrets.VPS_USER != '' && secrets.VPS_USER || vars.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          envs: INFRA_DIR_VALUE,DEPLOY_SHA,APPLY
+          script: |
+            set -eu
+            cd "${INFRA_DIR_VALUE:-$HOME/clenzy-infra}"
+            git fetch origin production
+            git merge-base --is-ancestor "$DEPLOY_SHA" origin/production
+            SCRIPT=$(mktemp)
+            trap 'rm -f "$SCRIPT"' EXIT
+            git show "$DEPLOY_SHA:keycloak/baitly-brute-force.sh" > "$SCRIPT"
+            if [ "$APPLY" = true ]; then bash "$SCRIPT" --apply; else bash "$SCRIPT" --check; fi
