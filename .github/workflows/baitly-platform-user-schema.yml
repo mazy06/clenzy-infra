@@ -1,0 +1,64 @@
+name: Baitly Platform User Schema
+
+on:
+  pull_request:
+    paths:
+      - '.github/maintenance/baitly_platform_user_schema.py'
+      - '.github/maintenance/test_baitly_platform_user_schema.py'
+      - '.github/workflows/baitly-platform-user-schema.yml'
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Apply the reviewed platform-user migration on app.baitly.fr only
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test instance, immutable source and execution guards
+        run: python3 -B -m unittest discover -s .github/maintenance -p test_baitly_platform_user_schema.py -v
+  repair:
+    needs: verify
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/production'
+    runs-on: ubuntu-latest
+    environment: production-baitly
+    concurrency:
+      group: cd-deploy-production-baitly
+      cancel-in-progress: false
+    steps:
+      - name: Apply canonical Liquibase migration without restarting the PMS
+        uses: appleboy/ssh-action@v1
+        env:
+          INFRA_DIR_VALUE: ${{ vars.VPS_INFRA_DIR }}
+          DEPLOY_SHA: ${{ github.sha }}
+          BAITLY_SCHEMA_APPLY: ${{ inputs.apply }}
+        with:
+          host: ${{ secrets.VPS_HOST != '' && secrets.VPS_HOST || vars.VPS_HOST }}
+          username: ${{ secrets.VPS_USER != '' && secrets.VPS_USER || vars.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          envs: INFRA_DIR_VALUE,DEPLOY_SHA,BAITLY_SCHEMA_APPLY
+          command_timeout: 10m
+          script: |
+            set -eu
+            set +x
+            cd "${INFRA_DIR_VALUE:-$HOME/clenzy-infra}"
+            git fetch origin production
+            git merge-base --is-ancestor "$DEPLOY_SHA" origin/production
+            SCRIPT=$(mktemp)
+            trap 'rm -f "$SCRIPT"' EXIT
+            git show "$DEPLOY_SHA:.github/maintenance/baitly_platform_user_schema.py" > "$SCRIPT"
+            set -a
+            . ./.env
+            set +a
+            if [ "$BAITLY_SCHEMA_APPLY" = true ]; then
+              python3 "$SCRIPT" --apply
+            else
+              python3 "$SCRIPT"
+            fi
