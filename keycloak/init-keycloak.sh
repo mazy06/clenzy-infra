@@ -9,12 +9,24 @@ done
 
 echo "Keycloak is ready!"
 
-# Obtenir le token d'accès admin
+# Obtenir le token d'accès admin.
+#
+# Les identifiants viennent de l'ENVIRONNEMENT, jamais du script. Ils y étaient
+# codés en dur (`admin`/`admin`) : un défaut discret, parce que le script marche
+# tant que l'installation utilise ces valeurs par défaut — et échoue en silence,
+# sans dire pourquoi, dès qu'on les change. Les inscrire dans un fichier suivi
+# par git invite en plus à ne jamais les changer.
+if [ -z "${KEYCLOAK_ADMIN:-}" ] || [ -z "${KEYCLOAK_ADMIN_PASSWORD:-}" ]; then
+    echo "KEYCLOAK_ADMIN et KEYCLOAK_ADMIN_PASSWORD doivent être définis." >&2
+    echo "Exemple : set -a && . ../.env.dev && set +a && ./keycloak/init-keycloak.sh" >&2
+    exit 1
+fi
+
 echo "Getting admin access token..."
 TOKEN_RESPONSE=$(curl -s -X POST \
     -H "Content-Type: application/x-www-form-urlencoded" \
-    -d "username=admin" \
-    -d "password=admin" \
+    --data-urlencode "username=${KEYCLOAK_ADMIN}" \
+    --data-urlencode "password=${KEYCLOAK_ADMIN_PASSWORD}" \
     -d "grant_type=password" \
     -d "client_id=admin-cli" \
     http://keycloak:8080/realms/master/protocol/openid-connect/token)

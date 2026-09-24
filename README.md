@@ -79,6 +79,39 @@ docker compose -f docker-compose.dev.yml --env-file .env.dev up --build
 | PMS API        | https://app.clenzy.fr/api    |
 | Keycloak       | https://auth.clenzy.fr       |
 
+## Courriels Keycloak (obligatoire apres une installation)
+
+Keycloak envoie lui-meme certains courriels : « mot de passe oublie »,
+verification d'adresse, et l'invitation a definir un mot de passe recue par un
+prestataire dont la candidature vient d'etre acceptee.
+
+**Sans configuration SMTP sur le royaume, aucun de ces courriels ne part** —
+l'API repond 500 et un compte fraichement cree devient un compte que personne
+ne peut ouvrir. Le fichier `realm-clenzy.json` ne suffit pas : il n'est importe
+qu'a la CREATION du royaume, donc jamais sur une installation existante.
+
+```bash
+# Developpement : vise Mailpit (defaut du script)
+KEYCLOAK_ADMIN=... KEYCLOAK_ADMIN_PASSWORD=... \
+  ./keycloak/configure-realm-email.sh
+```
+
+```bash
+# Production : vise le vrai relais
+KEYCLOAK_URL=https://auth.clenzy.fr \
+KEYCLOAK_ADMIN=... KEYCLOAK_ADMIN_PASSWORD=... \
+SMTP_HOST=smtp-relay.brevo.com SMTP_PORT=587 SMTP_STARTTLS=true \
+SMTP_USER=... SMTP_PASSWORD=... \
+  ./keycloak/configure-realm-email.sh
+```
+
+Le script est **idempotent** : le rejouer reapplique la meme configuration. Il
+regle aussi la LANGUE des courriels (francais par defaut) — sans quoi Keycloak
+ecrit en anglais, ce qu'un destinataire francophone prend pour du spam.
+
+Verification : `docker exec clenzy-mailpit-dev ...` ou l'interface Mailpit sur
+http://localhost:8025 apres un « mot de passe oublie ».
+
 ## Commandes utiles
 
 ### Demarrage et arret
