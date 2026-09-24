@@ -384,7 +384,7 @@ echo "📊 Etat des services :"
 $DC ps
 
 echo ""
-echo "🏥 Verification de sante (attente max 120s) :"
+echo "🏥 Attente que les services soient SAINS (max 300s) :"
 
 # Keycloak a son propre check HTTP ci-dessous
 BASIC_SERVICES=""
@@ -392,10 +392,37 @@ for S in $HEALTH_SERVICES; do
   [ "$S" != "keycloak" ] && BASIC_SERVICES="$BASIC_SERVICES $S"
 done
 
+# Verdict d'un service : son HEALTHCHECK quand il en declare un, son etat sinon.
+#
+# `{{.State}}` vaut `running` des que le PROCESSUS demarre — une seconde apres
+# le `up`, bien avant que Spring Boot ait ouvert son port et, surtout, avant que
+# Liquibase ait applique ses changesets. C'est ce qui laissait un deploiement se
+# declarer reussi alors que le serveur n'avait pas fini de demarrer : un
+# changeset fautif met l'application en boucle de redemarrage, et le
+# deploiement restait vert jusqu'a ce qu'un utilisateur ouvre l'ecran.
+#
+# Tous les services ne declarent pas de healthcheck ; pour ceux-la `{{.Health}}`
+# est vide et `running` reste le seul critere disponible.
+service_verdict() {
+  _svc="$1"
+  _state=$($DC ps --format '{{.State}}' "$_svc" 2>/dev/null || echo "")
+  _health=$($DC ps --format '{{.Health}}' "$_svc" 2>/dev/null || echo "")
+  if [ -z "$_state" ]; then
+    echo "absent"
+  elif [ -n "$_health" ]; then
+    echo "$_health"
+  else
+    echo "$_state"
+  fi
+}
+
 FAILED=0
 STILL_WAITING="$BASIC_SERVICES"
 ELAPSED=0
-MAX_WAIT=120
+# 300 s et non 120 : le serveur PMS met environ deux minutes a demarrer
+# (contexte Spring + Liquibase), mesure au deploiement du 23/09. L'ancienne
+# borne etait a une pause GC de declarer un echec sur un demarrage normal.
+MAX_WAIT=300
 INTERVAL=5
 
 while [ -n "$STILL_WAITING" ] && [ "$ELAPSED" -lt "$MAX_WAIT" ]; do
@@ -403,18 +430,21 @@ while [ -n "$STILL_WAITING" ] && [ "$ELAPSED" -lt "$MAX_WAIT" ]; do
   ELAPSED=$((ELAPSED + INTERVAL))
   NEXT_WAITING=""
   for SERVICE in $STILL_WAITING; do
-    STATUS=$(docker compose -f docker-compose.prod.yml ps --format '{{.State}}' $SERVICE 2>/dev/null || echo "not found")
-    if [ "$STATUS" != "running" ]; then
-      NEXT_WAITING="$NEXT_WAITING $SERVICE"
-    fi
+    case "$(service_verdict "$SERVICE")" in
+      healthy|running) ;;
+      *) NEXT_WAITING="$NEXT_WAITING $SERVICE" ;;
+    esac
   done
   STILL_WAITING="$NEXT_WAITING"
+  if [ -n "$STILL_WAITING" ]; then
+    echo "   ⏳ ${ELAPSED}s —${STILL_WAITING}"
+  fi
 done
 
 for SERVICE in $BASIC_SERVICES; do
-  STATUS=$(docker compose -f docker-compose.prod.yml ps --format '{{.State}}' $SERVICE 2>/dev/null || echo "not found")
-  if [ "$STATUS" = "running" ]; then
-    echo "   ✅ $SERVICE : running"
+  STATUS=$(service_verdict "$SERVICE")
+  if [ "$STATUS" = "healthy" ] || [ "$STATUS" = "running" ]; then
+    echo "   ✅ $SERVICE : $STATUS"
   else
     echo "   ❌ $SERVICE : $STATUS"
     echo "   📋 Logs recents de $SERVICE :"
