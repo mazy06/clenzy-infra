@@ -714,7 +714,20 @@ services:
       # ${SITE_DOMAIN} (site marketing) est volontairement ABSENT : il n'est pas
       # deploye, et l'inscrire ici y graverait un domaine en dur pour toutes les
       # instances. A ajouter le jour ou ce site appelle l'API.
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://${APP_DOMAIN},https://${DOMAIN},https://www.${DOMAIN}}
+      #
+      # ALLOWED_ORIGINS du .env AJOUTE, il ne REMPLACE plus. C'etait un defaut
+      # (`${ALLOWED_ORIGINS:-...}`) : une valeur posee dans le .env le
+      # court-circuitait entierement. L'instance baitly.fr en portait une,
+      # periemee, qui ne listait que son app — corriger le compose n'y changeait
+      # donc rien, et il fallait editer un secret qu'on ne peut pas relire.
+      #
+      # Les domaines de l'instance ne peuvent desormais plus etre omis par
+      # accident, et le .env garde son role : ajouter des origines SUPPLEMENTAIRES
+      # (un partenaire, un preprod), ce qui est le seul besoin legitime.
+      #
+      # Un doublon est sans effet : la liste est parcourue jusqu'a la premiere
+      # correspondance.
+      ALLOWED_ORIGINS: https://${APP_DOMAIN},https://${DOMAIN},https://www.${DOMAIN}${ALLOWED_ORIGINS:+,${ALLOWED_ORIGINS}}
       SERVER_PORT: 8080
       # Part du plafond conteneur laissee au TAS. L'entrypoint du Dockerfile fixe
       # `-XX:MaxRAMPercentage=75.0` mais developpe `$JAVA_OPTS` ENSUITE : a options
