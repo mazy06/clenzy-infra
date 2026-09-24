@@ -696,8 +696,25 @@ services:
       STORAGE_OBJECT_BUCKET_MEDIA: ${STORAGE_OBJECT_BUCKET_MEDIA:-}
       STORAGE_OBJECT_BUCKET_DOCUMENTS: ${STORAGE_OBJECT_BUCKET_DOCUMENTS:-}
       STORAGE_OBJECT_BUCKET_ARCHIVE: ${STORAGE_OBJECT_BUCKET_ARCHIVE:-}
-      # CORS
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://${APP_DOMAIN}}
+      # CORS — l'app ET la landing de l'instance.
+      #
+      # Le defaut ne portait que ${APP_DOMAIN}. Or la landing (${DOMAIN}) appelle
+      # l'API sur app.<domaine> : c'est une requete INTER-ORIGINES, que le
+      # backend refusait avec un 403 sans en-tete Access-Control-Allow-Origin.
+      # Le navigateur bloquait la reponse et la page n'affichait rien — sans
+      # aucune trace cote serveur, puisque l'endpoint lui-meme repond 200 quand
+      # on l'interroge sans en-tete Origin.
+      #
+      # Invisible en local, ou landing et API partagent la meme origine et ou le
+      # CORS ne s'applique donc pas. Constate le 24/09 sur l'instance baitly.fr.
+      #
+      # ${DOMAIN} est declare sans valeur par defaut, comme ${APP_DOMAIN} : nginx
+      # ne demarre pas sans lui, il ne peut donc pas produire un « https:// » vide.
+      #
+      # ${SITE_DOMAIN} (site marketing) est volontairement ABSENT : il n'est pas
+      # deploye, et l'inscrire ici y graverait un domaine en dur pour toutes les
+      # instances. A ajouter le jour ou ce site appelle l'API.
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://${APP_DOMAIN},https://${DOMAIN},https://www.${DOMAIN}}
       SERVER_PORT: 8080
       # Part du plafond conteneur laissee au TAS. L'entrypoint du Dockerfile fixe
       # `-XX:MaxRAMPercentage=75.0` mais developpe `$JAVA_OPTS` ENSUITE : a options
