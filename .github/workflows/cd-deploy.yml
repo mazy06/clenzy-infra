@@ -195,6 +195,13 @@ jobs:
           DEPLOY_MODE: ${{ github.event.client_payload.deploy_mode || github.event.inputs.deploy_mode || 'update' }}
           DEPLOY_SERVICES: ${{ github.event.client_payload.services || github.event.client_payload.service || github.event.inputs.services || '' }}
           DEPLOY_FORCE_RECREATE: ${{ github.event.client_payload.force_recreate || github.event.inputs.force_recreate || 'false' }}
+          # Stockage objet OVH des fichiers (photos, PDF, pieces jointes) : les deux cles S3 de
+          # l'utilisateur OVH de l'instance. Presentes = stockage objet active pour toutes les
+          # familles ; absentes = rien ne change. STORAGE_OBJECT_BUCKET (variable, facultative)
+          # donne un conteneur prive propre a l'instance.
+          DEPLOY_STORAGE_ACCESS_KEY: ${{ secrets.STORAGE_OBJECT_ACCESS_KEY }}
+          DEPLOY_STORAGE_SECRET_KEY: ${{ secrets.STORAGE_OBJECT_SECRET_KEY }}
+          DEPLOY_STORAGE_BUCKET: ${{ vars.STORAGE_OBJECT_BUCKET }}
         run: |
           set -euo pipefail
 
@@ -207,7 +214,7 @@ jobs:
           # n'apparaissent donc jamais sur la ligne de commande distante (ps) ni
           # dans le journal du runner.
           {
-            for v in DEPLOY_INFRA_DIR DEPLOY_REPO DEPLOY_GHCR_OWNER DEPLOY_GHCR_TOKEN DEPLOY_GIT_TOKEN DEPLOY_APP_GIT_TOKEN DEPLOY_ENV_B64 DEPLOY_FORCE_ENV DEPLOY_MODE DEPLOY_SERVICES DEPLOY_FORCE_RECREATE; do
+            for v in DEPLOY_INFRA_DIR DEPLOY_REPO DEPLOY_GHCR_OWNER DEPLOY_GHCR_TOKEN DEPLOY_GIT_TOKEN DEPLOY_APP_GIT_TOKEN DEPLOY_ENV_B64 DEPLOY_FORCE_ENV DEPLOY_MODE DEPLOY_SERVICES DEPLOY_FORCE_RECREATE DEPLOY_STORAGE_ACCESS_KEY DEPLOY_STORAGE_SECRET_KEY DEPLOY_STORAGE_BUCKET; do
               printf 'export %s=%q\n' "$v" "${!v-}"
             done
             cat <<'SCRIPT_DISTANT'
@@ -265,6 +272,29 @@ jobs:
               fi
               chmod 600 .env
             fi
+          fi
+
+          # --- Stockage objet OVH (fichiers de l'application) ---
+          # Les cles viennent de secrets GitHub dedies : le .env complet n'a pas a etre
+          # regenere pour les ajouter. Chaque ligne est remplacee, jamais dupliquee.
+          if [ -n "${DEPLOY_STORAGE_ACCESS_KEY:-}" ] && [ -n "${DEPLOY_STORAGE_SECRET_KEY:-}" ]; then
+            upsert_env() {
+              tmp_env="$(mktemp)"
+              grep -v "^$1=" .env > "$tmp_env" || true
+              printf '%s=%s\n' "$1" "$2" >> "$tmp_env"
+              cat "$tmp_env" > .env
+              rm -f "$tmp_env"
+            }
+            upsert_env STORAGE_OBJECT_ACCESS_KEY "$DEPLOY_STORAGE_ACCESS_KEY"
+            upsert_env STORAGE_OBJECT_SECRET_KEY "$DEPLOY_STORAGE_SECRET_KEY"
+            if [ -n "${DEPLOY_STORAGE_BUCKET:-}" ]; then
+              upsert_env STORAGE_OBJECT_BUCKET_MEDIA "$DEPLOY_STORAGE_BUCKET"
+              upsert_env STORAGE_OBJECT_BUCKET_DOCUMENTS "$DEPLOY_STORAGE_BUCKET"
+            fi
+            for family in STORAGE_PHOTOS STORAGE_DOCUMENTS STORAGE_INTERVENTION_PHOTOS STORAGE_BINARY_ASSETS; do
+              upsert_env "$family" object
+            done
+            echo "🗄️  Stockage objet OVH active (photos, documents, pieces jointes, binaires)"
           fi
 
           # Charger .env puis lancer le script de deploiement
