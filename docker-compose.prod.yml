@@ -121,6 +121,13 @@ services:
       VITE_TURNSTILE_SITE_KEY: ${VITE_TURNSTILE_SITE_KEY:-}
       VITE_API_URL: https://${APP_DOMAIN:-app.clenzy.fr}
       VITE_APP_URL: https://${APP_DOMAIN:-app.clenzy.fr}
+      # Videos de la Baitly Academie : le site les lit sur son domaine (/academie/media/,
+      # CSP media-src 'self') et nginx les relaie vers le conteneur OVH Object Storage PUBLIC
+      # de l'Academie (jamais baitly-media, prive, qui porte les donnees clients). Adresse
+      # publique : pas de secret, donc une valeur par defaut ici. Vide = pas de relais, la
+      # page affiche un message a la place de la video. Voir clenzy/client/docker-runtime-config.sh
+      # et clenzy/marketing/academie/PUBLICATION.md.
+      BAITLY_ACADEMY_MEDIA_ORIGIN: ${BAITLY_ACADEMY_MEDIA_ORIGIN:-https://baitly-academie.s3.gra.io.cloud.ovh.net/academie}
     expose:
       - "80"
     networks:
