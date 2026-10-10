@@ -5,13 +5,15 @@ on:
       - '.github/workflows/baitly-planning-staging-benchmark.yml'
       - '.github/maintenance/baitly_planning_staging_benchmark.sh'
       - '.github/maintenance/test_baitly_planning_staging_benchmark.py'
+      - '.github/maintenance/baitly_staging_error_classes.py'
+      - '.github/maintenance/test_baitly_staging_error_classes.py'
   workflow_dispatch:
     inputs:
       mode:
-        description: 'Staging app.clenzy.fr uniquement : schéma, référence complète, briques allégées ou désactivation'
+        description: 'Staging app.clenzy.fr uniquement : schéma, mesures, désactivation ou classes d’erreur sans logs bruts'
         type: choice
         default: schema
-        options: [schema, baseline, cards, disable]
+        options: [schema, baseline, cards, disable, diagnostic]
       max_rate:
         description: 'Débit maximal proposé en fenêtres/s ; montée conditionnée aux mesures précédentes'
         type: choice
@@ -24,7 +26,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: python3 -B -m unittest discover -s .github/maintenance -p test_baitly_planning_staging_benchmark.py -v
+      - run: |
+          python3 -B -m unittest discover -s .github/maintenance -p test_baitly_planning_staging_benchmark.py -v
+          python3 -B -m unittest discover -s .github/maintenance -p test_baitly_staging_error_classes.py -v
       - run: bash -n .github/maintenance/baitly_planning_staging_benchmark.sh
   staging:
     needs: verify

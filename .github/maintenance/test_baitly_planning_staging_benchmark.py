@@ -37,6 +37,13 @@ class PlanningStagingBenchmarkTest(unittest.TestCase):
         for forbidden in ('docker restart', 'docker stop', 'docker compose up', 'docker compose down'):
             self.assertNotIn(forbidden, self.script)
 
+    def test_diagnostic_does_not_provision_or_disable_clients(self):
+        self.assertIn('&& "$BAITLY_BENCHMARK_MODE" != diagnostic', self.script)
+        diagnostic = self.script.index('if [[ "$BAITLY_BENCHMARK_MODE" == diagnostic ]]')
+        provision = self.script.index('\nremote provision')
+        self.assertLess(diagnostic, provision)
+        self.assertIn('remote diagnostic > baitly-benchmark-results/error-classes.json\n  exit 0', self.script)
+
 
 if __name__ == '__main__':
     unittest.main()
