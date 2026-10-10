@@ -15,7 +15,7 @@ on:
         description: 'Staging app.clenzy.fr uniquement : schéma, mesures, désactivation ou classes d’erreur sans logs bruts'
         type: choice
         default: schema
-        options: [schema, baseline, cards, disable, diagnostic]
+        options: [schema, baseline, cards, small, disable, diagnostic]
       max_rate:
         description: 'Débit maximal proposé en fenêtres/s ; montée conditionnée aux mesures précédentes'
         type: choice
@@ -55,7 +55,7 @@ jobs:
           path: baitly-app
           token: ${{ secrets.APP_REPO_TOKEN || secrets.GHCR_TOKEN || github.token }}
       - name: Install k6 for HTTP measurements
-        if: inputs.mode == 'baseline' || inputs.mode == 'cards'
+        if: inputs.mode == 'baseline' || inputs.mode == 'cards' || inputs.mode == 'small'
         run: |
           sudo gpg -k
           sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69

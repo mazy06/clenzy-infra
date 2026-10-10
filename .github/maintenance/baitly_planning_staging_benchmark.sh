@@ -4,7 +4,7 @@ set -euo pipefail
 set +x
 umask 077
 
-case "${BAITLY_BENCHMARK_MODE:-}" in schema|baseline|cards|disable|diagnostic) ;; *) exit 2 ;; esac
+case "${BAITLY_BENCHMARK_MODE:-}" in schema|baseline|cards|small|disable|diagnostic) ;; *) exit 2 ;; esac
 case "${BAITLY_BENCHMARK_MAX_RATE:-1}" in 1|5|10) ;; *) exit 2 ;; esac
 [[ "${GITHUB_RUN_ID:-}" =~ ^[0-9]+$ ]] || exit 2
 [[ "${VPS_HOST:-}" =~ ^[a-zA-Z0-9.-]+$ ]] || exit 2
@@ -117,6 +117,43 @@ run_measurement() {
   if [[ "$status" == 99 ]]; then verdict=99; fi
   return "$status"
 }
+
+# Petits portefeuilles : chauffe séparée puis trois répétitions à débit constant.
+# Le mode small ignore max_rate et ne dépasse jamais une fenêtre par seconde.
+if [[ "$BAITLY_BENCHMARK_MODE" == small ]]; then
+  export PLANNING_WINDOWS_PER_SECOND=1 PLANNING_INCLUDE_CATALOG=true PLANNING_PLATEAU=30s
+  for cohort in 10 100; do
+    export PLANNING_PROPERTY_COUNT="$cohort"
+    status=0
+    run_measurement "warmup-${cohort}" || status=$?
+    [[ "$status" == 0 || "$status" == 99 ]] || exit "$status"
+  done
+  # La chauffe peut dépasser les objectifs de latence, mais jamais masquer une erreur.
+  python3 - <<'PYTHON'
+import json
+from pathlib import Path
+for cohort in (10, 100):
+    metrics = json.loads(Path(f"baitly-benchmark-results/warmup-{cohort}-summary.json").read_text())["metrics"]
+    for name, value in (("planning_errors", "value"), ("planning_throttled", "value"), ("dropped_iterations", "count")):
+        metric = metrics[name]
+        values = metric.get("values", metric)
+        if values[value] != 0:
+            raise SystemExit("Chauffe invalide : erreurs, limitation ou fenêtres perdues.")
+PYTHON
+  verdict=0
+  export PLANNING_PLATEAU=2m
+  for round in 1 2 3; do
+    cohorts=(10 100)
+    [[ "$round" != 2 ]] || cohorts=(100 10)
+    for cohort in "${cohorts[@]}"; do
+      export PLANNING_PROPERTY_COUNT="$cohort"
+      status=0
+      run_measurement "small-${cohort}-round-${round}" || status=$?
+      [[ "$status" == 0 || "$status" == 99 ]] || exit "$status"
+    done
+  done
+  exit "$verdict"
+fi
 
 # Comparaison des trois tailles au même faible débit, avec toutes les pages du catalogue.
 export PLANNING_WINDOWS_PER_SECOND=1 PLANNING_INCLUDE_CATALOG=true

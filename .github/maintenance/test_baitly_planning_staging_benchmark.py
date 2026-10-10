@@ -46,5 +46,22 @@ class PlanningStagingBenchmarkTest(unittest.TestCase):
         self.assertIn('remote identity-audit > baitly-benchmark-results/fixture-identity-counts.json\n  exit 0', self.script)
 
 
+    def test_small_portfolios_are_warmed_and_repeated_without_rate_escalation(self):
+        self.assertIn("options: [schema, baseline, cards, small, disable, diagnostic]", self.workflow)
+        self.assertIn("inputs.mode == 'small'", self.workflow)
+        start = self.script.index('if [[ "$BAITLY_BENCHMARK_MODE" == small ]]')
+        end = self.script.index("# Comparaison des trois tailles", start)
+        small = self.script[start:end]
+        self.assertIn("PLANNING_WINDOWS_PER_SECOND=1", small)
+        self.assertIn("for cohort in 10 100", small)
+        self.assertIn("for round in 1 2 3", small)
+        self.assertIn("cohorts=(100 10)", small)
+        self.assertIn("warmup-${cohort}", small)
+        self.assertIn("small-${cohort}-round-${round}", small)
+        self.assertIn('exit "$verdict"', small)
+        self.assertIn('if values[value] != 0:', small)
+        self.assertNotIn("for rate", small)
+
+
 if __name__ == '__main__':
     unittest.main()
