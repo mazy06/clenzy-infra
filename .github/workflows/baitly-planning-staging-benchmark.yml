@@ -1,0 +1,74 @@
+name: Baitly planning staging benchmark
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/baitly-planning-staging-benchmark.yml'
+      - '.github/maintenance/baitly_planning_staging_benchmark.sh'
+      - '.github/maintenance/test_baitly_planning_staging_benchmark.py'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Staging app.clenzy.fr uniquement : schéma, référence complète, briques allégées ou désactivation'
+        type: choice
+        default: schema
+        options: [schema, baseline, cards, disable]
+      max_rate:
+        description: 'Débit maximal proposé en fenêtres/s ; montée conditionnée aux mesures précédentes'
+        type: choice
+        default: '5'
+        options: ['1', '5', '10']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -B -m unittest discover -s .github/maintenance -p test_baitly_planning_staging_benchmark.py -v
+      - run: bash -n .github/maintenance/baitly_planning_staging_benchmark.sh
+  staging:
+    needs: verify
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Nom GitHub historique : CD qualifie cet environnement comme app.clenzy.fr.
+    # Aucun environnement production-baitly, aucun domaine ou serveur configurable par input.
+    environment:
+      name: production
+      url: https://app.clenzy.fr
+    concurrency:
+      group: cd-deploy-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: mazy06/clenzy
+          ref: main
+          path: baitly-app
+          token: ${{ secrets.APP_REPO_TOKEN || secrets.GHCR_TOKEN || github.token }}
+      - name: Install k6 for HTTP measurements
+        if: inputs.mode == 'baseline' || inputs.mode == 'cards'
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo 'deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main' | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install -y k6
+      - name: Inspect or benchmark app.clenzy.fr
+        env:
+          BAITLY_BENCHMARK_MODE: ${{ inputs.mode }}
+          BAITLY_BENCHMARK_MAX_RATE: ${{ inputs.max_rate }}
+          VPS_HOST: ${{ secrets.VPS_HOST != '' && secrets.VPS_HOST || vars.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER != '' && secrets.VPS_USER || vars.VPS_USER }}
+          VPS_PORT: ${{ secrets.VPS_PORT || 22 }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_INFRA_DIR: ${{ vars.VPS_INFRA_DIR }}
+        run: bash .github/maintenance/baitly_planning_staging_benchmark.sh
+      - name: Preserve metrics and plans only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: baitly-planning-staging-${{ inputs.mode }}-${{ github.run_id }}
+          path: baitly-benchmark-results/
+          retention-days: 14
