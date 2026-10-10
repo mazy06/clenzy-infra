@@ -1,9 +1,9 @@
 # ===========================================
-# Clenzy — CD Deploy (Deploiement complet VPS)
+# Baitly — CD Deploy (Deploiement complet VPS)
 # ===========================================
 # Workflow pour deployer l'ensemble de l'infrastructure sur le VPS OVH.
 # Declenche :
-#   - Automatiquement quand on push/merge sur la branche 'production'
+#   - Push main/production : déploiement infra sur staging ; promotion publique explicite
 #   - Manuellement via workflow_dispatch
 #   - A distance via repository_dispatch (depuis les repos applicatifs)
 # Note: trigger via push requires matching one of the configured paths below.
@@ -16,7 +16,7 @@ name: CD Deploy
 
 on:
   push:
-    branches: [production]
+    branches: [main, production]
     paths:
       - 'docker-compose.prod.yml'
       - 'nginx/**'
@@ -31,11 +31,10 @@ on:
       target:
         description: "Instance a deployer"
         required: true
-        default: 'all'
+        default: 'staging'
         type: choice
         options:
-          - all
-          - production
+          - staging
           - production-baitly
       deploy_mode:
         description: 'Mode de deploiement'
@@ -83,38 +82,56 @@ permissions:
 # (le 2e attend la fin du 1er) ; NE JAMAIS passer a true (annuler un deploy en cours peut
 # laisser la prod incoherente). Observe 3 echecs les 2026-06-18/19.
 jobs:
-  # Decide QUELLES instances deployer.
-  #
-  # Une cible explicite (workflow_dispatch, ou repository_dispatch qui la porte)
-  # ne deploie que celle-la. Sinon — un merge sur `production`, ou un dispatch de
-  # la CI applicative — TOUTES les instances partent : elles servent le meme code,
-  # les laisser diverger serait la vraie surprise.
+  # Les noms GitHub existants portent les secrets SSH ; ils restent compatibles.
+  # production = staging historique ; production-baitly = production publique.
   plan:
-    name: Cibles a deployer
+    name: Qualifier staging / production
     runs-on: ubuntu-latest
     outputs:
       targets: ${{ steps.resolve.outputs.targets }}
     steps:
       - id: resolve
         env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action }}
           INPUT_TARGET: ${{ github.event.inputs.target }}
           PAYLOAD_TARGET: ${{ github.event.client_payload.target }}
+          SOURCE_REF: ${{ github.event.client_payload.source_ref }}
+          SOURCE_SHA: ${{ github.event.client_payload.source_sha }}
+          SOURCE_REPO: ${{ github.event.client_payload.source_repo }}
         run: |
           set -euo pipefail
-          if [ "${INPUT_TARGET:-}" = "all" ]; then
-            targets='["production","production-baitly"]'
-          elif [ -n "${INPUT_TARGET:-}" ]; then
-            targets="[\"${INPUT_TARGET}\"]"
-          elif [ -n "${PAYLOAD_TARGET:-}" ]; then
-            targets="[\"${PAYLOAD_TARGET}\"]"
-          else
-            targets='["production","production-baitly"]'
+          target="${INPUT_TARGET:-${PAYLOAD_TARGET:-staging}}"
+          # Compatibilité des anciens outils ops : production désigne app.clenzy.fr.
+          [ "$target" != production ] || target=staging
+          case "$target" in
+            staging)
+              targets='[{"target":"staging","environment":"production","domain":"app.clenzy.fr","app_ref":"main"}]'
+              expected_ref=refs/heads/main ;;
+            production-baitly)
+              targets='[{"target":"production-baitly","environment":"production-baitly","domain":"app.baitly.fr","app_ref":"production"}]'
+              expected_ref=refs/heads/production ;;
+            *) echo "::error::Cible inconnue ; aucun déploiement"; exit 1 ;;
+          esac
+          if [ "$EVENT_NAME" = repository_dispatch ]; then
+            case "$EVENT_ACTION" in
+              deploy-clenzy-frontend|deploy-clenzy-backend)
+                if [ -z "$PAYLOAD_TARGET" ] || [ "$SOURCE_REF" != "$expected_ref" ] \
+                  || [ "$SOURCE_REPO" != "${GITHUB_REPOSITORY%/*}/clenzy" ] \
+                  || ! [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+                  echo "::error::Dispatch applicatif sans cible, branche ou SHA valide"; exit 1
+                fi ;;
+              *)
+                if [ "$target" != staging ]; then
+                  echo "::error::Promotion explicite depuis ce dépôt requise"; exit 1
+                fi ;;
+            esac
           fi
-          echo "Cibles : ${targets}"
           echo "targets=${targets}" >> "$GITHUB_OUTPUT"
+          echo "Cible : $target ($expected_ref)"
 
   deploy:
-    name: Deploy ${{ matrix.target }}
+    name: Deploy ${{ matrix.target }} (${{ matrix.domain }})
     needs: plan
     runs-on: ubuntu-latest
     strategy:
@@ -122,20 +139,21 @@ jobs:
       # elles sont independantes, sur deux VPS distincts.
       fail-fast: false
       matrix:
-        target: ${{ fromJSON(needs.plan.outputs.targets) }}
+        include: ${{ fromJSON(needs.plan.outputs.targets) }}
     # La file d'attente est PAR INSTANCE : deux VPS distincts n'ont aucune raison
     # de se bloquer mutuellement, mais deux deploiements de la MEME instance
     # doivent rester serialises. cancel-in-progress reste false : annuler un
     # deploiement en cours peut laisser la prod incoherente.
     concurrency:
-      group: cd-deploy-${{ matrix.target }}
+      group: cd-deploy-${{ matrix.environment }}
       cancel-in-progress: false
     # L'environnement GitHub porte TOUT ce qui distingue une instance : VPS_HOST,
     # VPS_USER, VPS_SSH_KEY, VPS_INFRA_DIR et PROD_ENV_FILE_B64. Ajouter une
     # instance = creer un environnement et l'ajouter au job `plan`, pas dupliquer
     # ce workflow.
     environment:
-      name: ${{ matrix.target }}
+      name: ${{ matrix.environment }}
+      url: https://${{ matrix.domain }}
 
     steps:
       # PAS de actions/checkout : aucune etape de ce job ne lit le depot — c'est le
@@ -155,13 +173,13 @@ jobs:
           missing=0
           for key in VPS_HOST VPS_USER; do
             if [ -z "${!key}" ]; then
-              echo "❌ Valeur manquante: $key (secret OU variable, repo/environnement production)"
+              echo "❌ Valeur manquante: $key (secret OU variable, repo/environnement de la cible)"
               missing=1
             fi
           done
           for key in VPS_SSH_KEY GHCR_TOKEN; do
             if [ -z "${!key}" ]; then
-              echo "❌ Secret manquant: $key (repo/environnement production)"
+              echo "❌ Secret manquant: $key (repo/environnement de la cible)"
               missing=1
             fi
           done
@@ -181,6 +199,10 @@ jobs:
           VPS_USER: ${{ secrets.VPS_USER != '' && secrets.VPS_USER || vars.VPS_USER }}
           VPS_PORT: ${{ secrets.VPS_PORT || 22 }}
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          DEPLOY_EXPECTED_DOMAIN: ${{ matrix.domain }}
+          DEPLOY_APP_REF: ${{ matrix.app_ref }}
+          DEPLOY_IMAGE_TAG: ${{ github.event.client_payload.source_repo == format('{0}/clenzy', github.repository_owner) && github.event.client_payload.source_sha || '' }}
+          DEPLOY_INFRA_SHA: ${{ github.sha }}
           DEPLOY_INFRA_DIR: ${{ vars.VPS_INFRA_DIR }}
           DEPLOY_REPO: ${{ github.repository }}
           DEPLOY_GHCR_OWNER: ${{ github.repository_owner }}
@@ -214,13 +236,13 @@ jobs:
           # n'apparaissent donc jamais sur la ligne de commande distante (ps) ni
           # dans le journal du runner.
           {
-            for v in DEPLOY_INFRA_DIR DEPLOY_REPO DEPLOY_GHCR_OWNER DEPLOY_GHCR_TOKEN DEPLOY_GIT_TOKEN DEPLOY_APP_GIT_TOKEN DEPLOY_ENV_B64 DEPLOY_FORCE_ENV DEPLOY_MODE DEPLOY_SERVICES DEPLOY_FORCE_RECREATE DEPLOY_STORAGE_ACCESS_KEY DEPLOY_STORAGE_SECRET_KEY DEPLOY_STORAGE_BUCKET; do
+            for v in DEPLOY_EXPECTED_DOMAIN DEPLOY_APP_REF DEPLOY_IMAGE_TAG DEPLOY_INFRA_SHA DEPLOY_INFRA_DIR DEPLOY_REPO DEPLOY_GHCR_OWNER DEPLOY_GHCR_TOKEN DEPLOY_GIT_TOKEN DEPLOY_APP_GIT_TOKEN DEPLOY_ENV_B64 DEPLOY_FORCE_ENV DEPLOY_MODE DEPLOY_SERVICES DEPLOY_FORCE_RECREATE DEPLOY_STORAGE_ACCESS_KEY DEPLOY_STORAGE_SECRET_KEY DEPLOY_STORAGE_BUCKET; do
               printf 'export %s=%q\n' "$v" "${!v-}"
             done
             cat <<'SCRIPT_DISTANT'
           set -e
           echo "=========================================="
-          echo "🚀 Clenzy — Deploiement Infrastructure"
+          echo "🚀 Baitly — Deploiement Infrastructure"
           echo "=========================================="
 
           INFRA_DIR="${DEPLOY_INFRA_DIR:-$HOME/clenzy-infra}"
@@ -240,8 +262,10 @@ jobs:
 
           echo "📥 Mise a jour du repo infrastructure..."
           git remote set-url origin "$REPO_URL_AUTH"
-          git fetch origin production
-          git reset --hard origin/production
+          # Déployer le code infra qui a été validé par ce workflow.
+          [[ "$DEPLOY_INFRA_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          git fetch origin "$DEPLOY_INFRA_SHA"
+          git reset --hard "$DEPLOY_INFRA_SHA"
           git remote set-url origin "$REPO_URL"
 
           # --- Provisioning .env ---
@@ -273,6 +297,13 @@ jobs:
               chmod 600 .env
             fi
           fi
+
+          # Vérifier la cible avant de modifier les services.
+          set -a; . ./.env; set +a
+          if [ "${APP_DOMAIN:-}" != "$DEPLOY_EXPECTED_DOMAIN" ]; then
+            echo "APP_DOMAIN ne correspond pas à la cible"; exit 1
+          fi
+          export DEPLOY_EXPECTED_DOMAIN DEPLOY_APP_REF DEPLOY_IMAGE_TAG
 
           # --- Stockage objet OVH (fichiers de l'application) ---
           # Les cles viennent de secrets GitHub dedies : le .env complet n'a pas a etre
@@ -318,7 +349,7 @@ jobs:
         if: failure()
         env:
           OPS_ALERT_TOKEN: ${{ secrets.OPS_ALERT_TOKEN }}
-          OPS_ALERT_URL: ${{ vars.OPS_ALERT_URL || 'https://app.clenzy.fr/api/ops/alerts' }}
+          OPS_ALERT_URL: ${{ vars.OPS_ALERT_URL || format('https://{0}/api/ops/alerts', matrix.domain) }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RUN_NUMBER: ${{ github.run_number }}
         run: |
@@ -329,7 +360,7 @@ jobs:
           fi
           MSG="Le workflow CD Deploy a echoue (run #${RUN_NUMBER}). Verifier l'auth/connexion VPS et les logs du run."
           PAYLOAD="$(jq -nc \
-            --arg t "Deploiement prod echoue" \
+            --arg t "Deploiement ${{ matrix.target }} echoue" \
             --arg m "$MSG" \
             --arg l "$RUN_URL" \
             '{severity:"critical",source:"cd-deploy",title:$t,message:$m,link:$l}')"

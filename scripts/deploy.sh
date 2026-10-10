@@ -19,7 +19,10 @@ set -e
 # Validate security activation before changing containers or host state.
 bash scripts/baitly-security-preflight.sh
 
-DC="docker compose -f docker-compose.prod.yml --env-file .env"
+# Même profil sécurisé et mêmes invariants Liquibase sur les deux instances.
+source scripts/baitly-deployment-images.sh
+baitly_prepare_deployment_images || exit 1
+DC="docker compose -f docker-compose.prod.yml --env-file .env --env-file .env.baitly-images"
 
 # ===========================================
 # Observabilite deploiement (Pushgateway + Alertmanager)
@@ -154,7 +157,7 @@ echo "   ✅ Base Keycloak OK."
 # 1b. Mise a jour du repo applicatif (clenzy)
 # ===========================================
 # Le docker-compose.prod.yml reference ../clenzy/client et ../clenzy/server
-# pour les builds. Il faut synchroniser ce repo avec la branche production.
+# pour les builds : main en staging, production en production.
 
 CLENZY_APP_DIR="$(cd .. && pwd)/clenzy"
 if [ -d "$CLENZY_APP_DIR/.git" ]; then
@@ -186,20 +189,20 @@ if [ -d "$CLENZY_APP_DIR/.git" ]; then
   fi
 
   fetch_rc=0
-  git fetch origin production || fetch_rc=$?
+  git fetch origin "$DEPLOY_APP_REF" || fetch_rc=$?
   # Toujours restaurer une URL sans secret (ne pas laisser le token en clair dans .git/config sur le VPS)
   git remote set-url origin "$APP_REPO_URL"
   if [ "$fetch_rc" -ne 0 ]; then
-    echo "❌ Echec du fetch du repo applicatif clenzy (token d'authentification invalide ou expire ?)."
+    echo "❌ Echec du fetch du repo applicatif Baitly (token d'authentification invalide ou expire ?)."
     echo "   Verifier le secret CLENZY_APP_GIT_TOKEN (ou le scope repo de GHCR_TOKEN)."
     exit 1
   fi
 
-  git checkout production 2>/dev/null || git checkout -b production origin/production
-  git reset --hard origin/production
+  git checkout "$DEPLOY_APP_REF" 2>/dev/null || git checkout -b "$DEPLOY_APP_REF" "origin/$DEPLOY_APP_REF"
+  git reset --hard "origin/$DEPLOY_APP_REF"
   # Nettoyer les fichiers non suivis (hors gitignore) — evite les conflits au prochain pull
   git clean -fd --quiet 2>/dev/null || true
-  echo "   ✅ Repo clenzy mis a jour : $(git log --oneline -1)"
+  echo "   ✅ Repo applicatif Baitly mis a jour : $(git log --oneline -1)"
   cd - >/dev/null
 else
   echo "⚠️  Repo applicatif non trouve ($CLENZY_APP_DIR). Les builds utiliseront la version existante."

@@ -1,10 +1,10 @@
 name: Baitly Security Regression
 on:
   pull_request:
-    paths: ['nginx/**', 'scripts/baitly-*', 'tests/**', 'docker-compose.prod.yml', 'keycloak/baitly-*', '.github/workflows/baitly-*']
+    paths: ['nginx/**', 'scripts/baitly-*', 'tests/**', 'docker-compose.prod.yml', 'keycloak/baitly-*', '.github/workflows/baitly-*', '.github/workflows/cd-deploy.yml', 'scripts/deploy.sh']
   push:
     branches: [main, production]
-    paths: ['nginx/**', 'scripts/baitly-*', 'tests/**', 'docker-compose.prod.yml', 'keycloak/baitly-*', '.github/workflows/baitly-*']
+    paths: ['nginx/**', 'scripts/baitly-*', 'tests/**', 'docker-compose.prod.yml', 'keycloak/baitly-*', '.github/workflows/baitly-*', '.github/workflows/cd-deploy.yml', 'scripts/deploy.sh']
 permissions:
   contents: read
 jobs:
@@ -31,6 +31,6 @@ jobs:
         run: python3 -B -m unittest discover -s tests -p 'test_baitly_*.py' -v
       - name: Check deployment shell syntax
         run: |
-          for script in scripts/deploy.sh scripts/baitly-security-preflight.sh keycloak/baitly-brute-force.sh; do
+          for script in scripts/deploy.sh scripts/baitly-deployment-images.sh scripts/baitly-security-preflight.sh keycloak/baitly-brute-force.sh; do
             bash -n "$script"
           done
