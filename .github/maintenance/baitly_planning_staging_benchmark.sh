@@ -42,6 +42,7 @@ fi
 script="$BAITLY_REMOTE_DIR/baitly-staging-fixtures.py"
 case "$BAITLY_OPERATION" in
   diagnostic) python3 "$BAITLY_REMOTE_DIR/baitly_staging_error_classes.py" ;;
+  identity-audit) python3 "$BAITLY_REMOTE_DIR/baitly_fixture_identity_audit.py" ;;
   schema) python3 "$script" schema --report "$BAITLY_REMOTE_DIR/schema.json" ;;
   provision)
     python3 "$script" provision --actors "$BAITLY_REMOTE_DIR/actors.json"
@@ -77,9 +78,11 @@ printf '%s\n' app.clenzy.fr > baitly-benchmark-results/domain.txt
 "${ssh_cmd[@]}" "mkdir -m 700 -- '$remote_dir'"
 "${scp_cmd[@]}" baitly-app/tests/performance/baitly-staging-fixtures.py "${VPS_USER}@${VPS_HOST}:$remote_dir/"
 "${scp_cmd[@]}" .github/maintenance/baitly_staging_error_classes.py "${VPS_USER}@${VPS_HOST}:$remote_dir/"
+"${scp_cmd[@]}" .github/maintenance/baitly_fixture_identity_audit.py "${VPS_USER}@${VPS_HOST}:$remote_dir/"
 prepared=true
 if [[ "$BAITLY_BENCHMARK_MODE" == diagnostic ]]; then
   remote diagnostic > baitly-benchmark-results/error-classes.json
+  remote identity-audit > baitly-benchmark-results/fixture-identity-counts.json
   exit 0
 fi
 remote schema

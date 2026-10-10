@@ -42,7 +42,8 @@ class PlanningStagingBenchmarkTest(unittest.TestCase):
         diagnostic = self.script.index('if [[ "$BAITLY_BENCHMARK_MODE" == diagnostic ]]')
         provision = self.script.index('\nremote provision')
         self.assertLess(diagnostic, provision)
-        self.assertIn('remote diagnostic > baitly-benchmark-results/error-classes.json\n  exit 0', self.script)
+        self.assertIn('remote diagnostic > baitly-benchmark-results/error-classes.json', self.script)
+        self.assertIn('remote identity-audit > baitly-benchmark-results/fixture-identity-counts.json\n  exit 0', self.script)
 
 
 if __name__ == '__main__':

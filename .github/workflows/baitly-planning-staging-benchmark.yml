@@ -7,6 +7,8 @@ on:
       - '.github/maintenance/test_baitly_planning_staging_benchmark.py'
       - '.github/maintenance/baitly_staging_error_classes.py'
       - '.github/maintenance/test_baitly_staging_error_classes.py'
+      - '.github/maintenance/baitly_fixture_identity_audit.py'
+      - '.github/maintenance/test_baitly_fixture_identity_audit.py'
   workflow_dispatch:
     inputs:
       mode:
@@ -29,6 +31,7 @@ jobs:
       - run: |
           python3 -B -m unittest discover -s .github/maintenance -p test_baitly_planning_staging_benchmark.py -v
           python3 -B -m unittest discover -s .github/maintenance -p test_baitly_staging_error_classes.py -v
+          python3 -B -m unittest discover -s .github/maintenance -p test_baitly_fixture_identity_audit.py -v
       - run: bash -n .github/maintenance/baitly_planning_staging_benchmark.sh
   staging:
     needs: verify
