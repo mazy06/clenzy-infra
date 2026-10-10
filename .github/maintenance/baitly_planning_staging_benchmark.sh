@@ -4,7 +4,7 @@ set -euo pipefail
 set +x
 umask 077
 
-case "${BAITLY_BENCHMARK_MODE:-}" in schema|baseline|cards|disable) ;; *) exit 2 ;; esac
+case "${BAITLY_BENCHMARK_MODE:-}" in schema|baseline|cards|disable|diagnostic) ;; *) exit 2 ;; esac
 case "${BAITLY_BENCHMARK_MAX_RATE:-1}" in 1|5|10) ;; *) exit 2 ;; esac
 [[ "${GITHUB_RUN_ID:-}" =~ ^[0-9]+$ ]] || exit 2
 [[ "${VPS_HOST:-}" =~ ^[a-zA-Z0-9.-]+$ ]] || exit 2
@@ -41,6 +41,7 @@ if [ "${APP_DOMAIN:-}" != app.clenzy.fr ]; then
 fi
 script="$BAITLY_REMOTE_DIR/baitly-staging-fixtures.py"
 case "$BAITLY_OPERATION" in
+  diagnostic) python3 "$BAITLY_REMOTE_DIR/baitly_staging_error_classes.py" ;;
   schema) python3 "$script" schema --report "$BAITLY_REMOTE_DIR/schema.json" ;;
   provision)
     python3 "$script" provision --actors "$BAITLY_REMOTE_DIR/actors.json"
@@ -58,7 +59,7 @@ cleanup() {
   original_status=$?
   trap - EXIT
   if [[ -n "$monitor_pid" ]]; then kill "$monitor_pid" 2>/dev/null || true; wait "$monitor_pid" 2>/dev/null || true; fi
-  if [[ "$prepared" == true && "$BAITLY_BENCHMARK_MODE" != schema ]]; then
+  if [[ "$prepared" == true && "$BAITLY_BENCHMARK_MODE" != schema && "$BAITLY_BENCHMARK_MODE" != diagnostic ]]; then
     if ! remote disable; then
       echo '::error::La désactivation des clients de fixture a échoué ; relancer le mode disable.'
       original_status=1
@@ -75,7 +76,12 @@ git -C baitly-app rev-parse HEAD > baitly-benchmark-results/app-sha.txt
 printf '%s\n' app.clenzy.fr > baitly-benchmark-results/domain.txt
 "${ssh_cmd[@]}" "mkdir -m 700 -- '$remote_dir'"
 "${scp_cmd[@]}" baitly-app/tests/performance/baitly-staging-fixtures.py "${VPS_USER}@${VPS_HOST}:$remote_dir/"
+"${scp_cmd[@]}" .github/maintenance/baitly_staging_error_classes.py "${VPS_USER}@${VPS_HOST}:$remote_dir/"
 prepared=true
+if [[ "$BAITLY_BENCHMARK_MODE" == diagnostic ]]; then
+  remote diagnostic > baitly-benchmark-results/error-classes.json
+  exit 0
+fi
 remote schema
 "${scp_cmd[@]}" "${VPS_USER}@${VPS_HOST}:$remote_dir/schema.json" baitly-benchmark-results/schema.json
 if [[ "$BAITLY_BENCHMARK_MODE" == schema ]]; then exit 0; fi
