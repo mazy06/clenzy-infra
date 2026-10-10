@@ -104,7 +104,7 @@ services:
   # vite.site.config.ts, sortie dans dist-site). Build dedie : l'image du PMS
   # embarque des variables (API, Keycloak, Stripe) dont le site n'a pas besoin.
   baitly-site:
-    image: ghcr.io/mazy06/clenzy-baitly-site:latest
+    image: ghcr.io/mazy06/clenzy-baitly-site:${BAITLY_SITE_IMAGE_TAG:-latest}
     build:
       context: ../clenzy/client
       dockerfile: Dockerfile.site
@@ -473,7 +473,7 @@ services:
 
   # Backend Spring Boot
   pms-server:
-    image: ghcr.io/mazy06/clenzy-server:latest
+    image: ghcr.io/mazy06/clenzy-server:${PMS_SERVER_IMAGE_TAG:-latest}
     build:
       context: ../clenzy/server
       dockerfile: Dockerfile
@@ -786,7 +786,7 @@ services:
 
   # Frontend React (PMS)
   pms-client:
-    image: ghcr.io/mazy06/clenzy-client:latest
+    image: ghcr.io/mazy06/clenzy-client:${PMS_CLIENT_IMAGE_TAG:-latest}
     build:
       context: ../clenzy/client
       dockerfile: Dockerfile
