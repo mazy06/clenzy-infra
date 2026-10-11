@@ -224,6 +224,9 @@ jobs:
           DEPLOY_STORAGE_ACCESS_KEY: ${{ secrets.STORAGE_OBJECT_ACCESS_KEY }}
           DEPLOY_STORAGE_SECRET_KEY: ${{ secrets.STORAGE_OBJECT_SECRET_KEY }}
           DEPLOY_STORAGE_BUCKET: ${{ vars.STORAGE_OBJECT_BUCKET }}
+          # Carte Baitly : secret HMAC des URL d'images de carte des e-mails (secret GitHub
+          # dedie, par environnement). Present = inscrit dans le .env ; absent = rien ne change.
+          DEPLOY_MAPS_SIGNING_SECRET: ${{ secrets.BAITLY_MAPS_SIGNING_SECRET }}
         run: |
           set -euo pipefail
 
@@ -236,7 +239,7 @@ jobs:
           # n'apparaissent donc jamais sur la ligne de commande distante (ps) ni
           # dans le journal du runner.
           {
-            for v in DEPLOY_EXPECTED_DOMAIN DEPLOY_APP_REF DEPLOY_IMAGE_TAG DEPLOY_INFRA_SHA DEPLOY_INFRA_DIR DEPLOY_REPO DEPLOY_GHCR_OWNER DEPLOY_GHCR_TOKEN DEPLOY_GIT_TOKEN DEPLOY_APP_GIT_TOKEN DEPLOY_ENV_B64 DEPLOY_FORCE_ENV DEPLOY_MODE DEPLOY_SERVICES DEPLOY_FORCE_RECREATE DEPLOY_STORAGE_ACCESS_KEY DEPLOY_STORAGE_SECRET_KEY DEPLOY_STORAGE_BUCKET; do
+            for v in DEPLOY_EXPECTED_DOMAIN DEPLOY_APP_REF DEPLOY_IMAGE_TAG DEPLOY_INFRA_SHA DEPLOY_INFRA_DIR DEPLOY_REPO DEPLOY_GHCR_OWNER DEPLOY_GHCR_TOKEN DEPLOY_GIT_TOKEN DEPLOY_APP_GIT_TOKEN DEPLOY_ENV_B64 DEPLOY_FORCE_ENV DEPLOY_MODE DEPLOY_SERVICES DEPLOY_FORCE_RECREATE DEPLOY_STORAGE_ACCESS_KEY DEPLOY_STORAGE_SECRET_KEY DEPLOY_STORAGE_BUCKET DEPLOY_MAPS_SIGNING_SECRET; do
               printf 'export %s=%q\n' "$v" "${!v-}"
             done
             cat <<'SCRIPT_DISTANT'
@@ -282,7 +285,17 @@ jobs:
             fi
             echo "📝 Synchronisation forcee de .env..."
             umask 077
-            printf '%s' "$DEPLOY_ENV_B64" | base64 -d > .env
+            env_candidat="$(mktemp)"
+            printf '%s' "$DEPLOY_ENV_B64" | base64 -d > "$env_candidat"
+            # Garde-fou : un secret tronque (une seule variable, fichier vide…) ne doit
+            # jamais remplacer le .env en service — l'instance ne redemarrerait pas.
+            if ! grep -q '^APP_DOMAIN=' "$env_candidat" || ! grep -q '^POSTGRES_PASSWORD=' "$env_candidat"; then
+              rm -f "$env_candidat"
+              echo "❌ PROD_ENV_FILE_B64 incomplet (APP_DOMAIN ou POSTGRES_PASSWORD absent) : .env conserve."
+              exit 1
+            fi
+            cat "$env_candidat" > .env
+            rm -f "$env_candidat"
             chmod 600 .env
           else
             if [ ! -f ".env" ]; then
@@ -305,17 +318,18 @@ jobs:
           fi
           export DEPLOY_EXPECTED_DOMAIN DEPLOY_APP_REF DEPLOY_IMAGE_TAG
 
+          # Secrets GitHub dedies inscrits dans le .env sans regenerer le fichier complet.
+          # Chaque ligne est remplacee, jamais dupliquee.
+          upsert_env() {
+            tmp_env="$(mktemp)"
+            grep -v "^$1=" .env > "$tmp_env" || true
+            printf '%s=%s\n' "$1" "$2" >> "$tmp_env"
+            cat "$tmp_env" > .env
+            rm -f "$tmp_env"
+          }
+
           # --- Stockage objet OVH (fichiers de l'application) ---
-          # Les cles viennent de secrets GitHub dedies : le .env complet n'a pas a etre
-          # regenere pour les ajouter. Chaque ligne est remplacee, jamais dupliquee.
           if [ -n "${DEPLOY_STORAGE_ACCESS_KEY:-}" ] && [ -n "${DEPLOY_STORAGE_SECRET_KEY:-}" ]; then
-            upsert_env() {
-              tmp_env="$(mktemp)"
-              grep -v "^$1=" .env > "$tmp_env" || true
-              printf '%s=%s\n' "$1" "$2" >> "$tmp_env"
-              cat "$tmp_env" > .env
-              rm -f "$tmp_env"
-            }
             upsert_env STORAGE_OBJECT_ACCESS_KEY "$DEPLOY_STORAGE_ACCESS_KEY"
             upsert_env STORAGE_OBJECT_SECRET_KEY "$DEPLOY_STORAGE_SECRET_KEY"
             if [ -n "${DEPLOY_STORAGE_BUCKET:-}" ]; then
@@ -326,6 +340,12 @@ jobs:
               upsert_env "$family" object
             done
             echo "🗄️  Stockage objet OVH active (photos, documents, pieces jointes, binaires)"
+          fi
+
+          # --- Carte Baitly : signature des images de carte des e-mails ---
+          if [ -n "${DEPLOY_MAPS_SIGNING_SECRET:-}" ]; then
+            upsert_env BAITLY_MAPS_SIGNING_SECRET "$DEPLOY_MAPS_SIGNING_SECRET"
+            echo "🗺️  Secret de signature des cartes inscrit dans .env"
           fi
 
           # Charger .env puis lancer le script de deploiement
