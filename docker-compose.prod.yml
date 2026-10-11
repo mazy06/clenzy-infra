@@ -420,6 +420,58 @@ services:
       - clenzy-network
 
   # ==========================================
+  # CARTE BAITLY — moteur de rendu d'images
+  # ==========================================
+
+  # Prepare le moteur a chaque deploiement : telecharge le paquet de rendu (styles,
+  # glyphes, epingles) depuis le conteneur OVH PUBLIC des cartes et ecrit la config.
+  # Voir maps-renderer/init.sh et clenzy/scripts/maps/README.md.
+  baitly-maps-renderer-init:
+    image: alpine:3.20
+    container_name: baitly-maps-renderer-init-prod
+    restart: "no"
+    entrypoint: ["sh", "/init.sh"]
+    environment:
+      BAITLY_MAPS_ORIGIN: ${BAITLY_MAPS_ORIGIN:-https://baitly-cartes.s3.gra.io.cloud.ovh.net/maps}
+    volumes:
+      - ./maps-renderer/init.sh:/init.sh:ro
+      - maps-renderer-data-prod:/data
+    networks:
+      - clenzy-network
+
+  # tileserver-gl : dessine les images des e-mails (via pms-server, URL signees) et les
+  # tuiles raster de l'app mobile, avec le style « Papier » de la carte web. Lit l'archive
+  # PMTiles directement dans le stockage objet (requetes Range) : aucune copie locale.
+  # Jamais expose : seul pms-server l'appelle sur le reseau interne.
+  baitly-maps-renderer:
+    image: maptiler/tileserver-gl:v5.2.0
+    container_name: baitly-maps-renderer-prod
+    restart: unless-stopped
+    command: ["--config", "/data/config.json", "--port", "8080"]
+    depends_on:
+      baitly-maps-renderer-init:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+    healthcheck:
+      # L'image n'embarque ni wget ni curl : sonde en Node.
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - maps-renderer-data-prod:/data:ro
+    expose:
+      - "8080"
+    networks:
+      clenzy-network:
+        aliases:
+          - baitly-maps-renderer
+
+  # ==========================================
   # LIBREOFFICE (Conversion ODT → PDF)
   # ==========================================
 
@@ -513,8 +565,11 @@ services:
       # `{CHECKOUT_SESSION_ID}` n'a pas de `$`, compose ne l'interpole donc pas
       # et Stripe le recoit litteral, comme il l'attend.
       FRONTEND_URL: https://${APP_DOMAIN:-app.clenzy.fr}
-      # Mapbox (carte dans les emails check-in)
-      MAPBOX_ACCESS_TOKEN: ${MAPBOX_ACCESS_TOKEN:-}
+      # Carte Baitly des e-mails check-in : moteur de rendu interne + secret HMAC des URL
+      # d'images publiques (>= 32 caracteres, a generer : openssl rand -base64 48). Secret
+      # vide = e-mails sans carte. Remplace MAPBOX_ACCESS_TOKEN (Mapbox n'est plus utilise).
+      BAITLY_MAPS_RENDERER_URL: http://baitly-maps-renderer:8080
+      BAITLY_MAPS_SIGNING_SECRET: ${BAITLY_MAPS_SIGNING_SECRET:-}
       STRIPE_CURRENCY: eur
       STRIPE_SUCCESS_URL: https://${APP_DOMAIN:-app.clenzy.fr}/interventions/payment/success?session_id={CHECKOUT_SESSION_ID}
       STRIPE_CANCEL_URL: https://${APP_DOMAIN:-app.clenzy.fr}/interventions/payment/cancel
@@ -812,6 +867,13 @@ services:
       VITE_POSTHOG_KEY: ${VITE_POSTHOG_KEY:-}
       VITE_POSTHOG_HOST: ${VITE_POSTHOG_HOST:-}
       VITE_MAPBOX_TOKEN: ${VITE_MAPBOX_TOKEN:-}
+      # Carte Baitly (MapLibre + tuiles OSM) : le front lit /maps/ sur son domaine et nginx
+      # relaie vers le conteneur OVH Object Storage PUBLIC des cartes (jamais baitly-media).
+      # Adresse publique, pas de secret. Vide = /maps/ repond 404 (carte vide).
+      # Alimente par clenzy/scripts/maps/{build,upload}-baitly-tiles.sh.
+      # VITE_MAPBOX_TOKEN ci-dessus ne sert plus qu'aux images clientes anterieures a
+      # la migration MapLibre : a retirer une fois ces images remplacees partout.
+      BAITLY_MAPS_ORIGIN: ${BAITLY_MAPS_ORIGIN:-https://baitly-cartes.s3.gra.io.cloud.ovh.net/maps}
       VITE_BAITLY_CAPTCHA_ENABLED: ${BAITLY_CAPTCHA_ENABLED:-false}
       VITE_TURNSTILE_SITE_KEY: ${VITE_TURNSTILE_SITE_KEY:-}
       VITE_CRISP_WEBSITE_ID: ${VITE_CRISP_WEBSITE_ID:-}
@@ -977,6 +1039,7 @@ volumes:
   document-templates-prod:
   document-generated-prod:
   backups-prod:
+  maps-renderer-data-prod:
 
 networks:
   clenzy-network:
