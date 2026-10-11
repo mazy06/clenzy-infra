@@ -47,7 +47,7 @@ class PlanningStagingBenchmarkTest(unittest.TestCase):
 
 
     def test_small_portfolios_are_warmed_and_repeated_without_rate_escalation(self):
-        self.assertIn("options: [schema, baseline, cards, small, disable, diagnostic]", self.workflow)
+        self.assertIn("options: [schema, baseline, cards, small, disable, diagnostic, purge-plan, purge]", self.workflow)
         self.assertIn("inputs.mode == 'small'", self.workflow)
         start = self.script.index('if [[ "$BAITLY_BENCHMARK_MODE" == small ]]')
         end = self.script.index("# Comparaison des trois tailles", start)
@@ -65,3 +65,12 @@ class PlanningStagingBenchmarkTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+    def test_purge_runs_only_the_fixture_purge_and_reports_counts(self):
+        start = self.script.index('if [[ "$BAITLY_BENCHMARK_MODE" == purge-plan || "$BAITLY_BENCHMARK_MODE" == purge ]]')
+        provision = self.script.index('\nremote provision')
+        self.assertLess(start, provision)
+        self.assertIn('remote "$BAITLY_BENCHMARK_MODE" > "baitly-benchmark-results/${BAITLY_BENCHMARK_MODE}.json"', self.script)
+        self.assertIn('purge) python3 "$script" purge ;;', self.script)
+        self.assertIn('purge-plan) python3 "$script" purge-plan ;;', self.script)
+        self.assertIn('&& "$BAITLY_BENCHMARK_MODE" != purge ]]', self.script)
