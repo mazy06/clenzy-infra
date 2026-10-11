@@ -12,10 +12,10 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'Staging app.clenzy.fr uniquement : schéma, mesures, désactivation ou classes d’erreur sans logs bruts'
+        description: 'Staging app.clenzy.fr uniquement : schéma, mesures, désactivation, classes d’erreur, ou purge du jeu de benchmark (purge-plan = essai à blanc)'
         type: choice
         default: schema
-        options: [schema, baseline, cards, small, disable, diagnostic]
+        options: [schema, baseline, cards, small, disable, diagnostic, purge-plan, purge]
       max_rate:
         description: 'Débit maximal proposé en fenêtres/s ; montée conditionnée aux mesures précédentes'
         type: choice

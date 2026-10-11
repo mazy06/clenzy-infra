@@ -4,7 +4,7 @@ set -euo pipefail
 set +x
 umask 077
 
-case "${BAITLY_BENCHMARK_MODE:-}" in schema|baseline|cards|small|disable|diagnostic) ;; *) exit 2 ;; esac
+case "${BAITLY_BENCHMARK_MODE:-}" in schema|baseline|cards|small|disable|diagnostic|purge-plan|purge) ;; *) exit 2 ;; esac
 case "${BAITLY_BENCHMARK_MAX_RATE:-1}" in 1|5|10) ;; *) exit 2 ;; esac
 [[ "${GITHUB_RUN_ID:-}" =~ ^[0-9]+$ ]] || exit 2
 [[ "${VPS_HOST:-}" =~ ^[a-zA-Z0-9.-]+$ ]] || exit 2
@@ -50,6 +50,8 @@ case "$BAITLY_OPERATION" in
     ;;
   stats) python3 "$script" stats ;;
   disable) python3 "$script" disable ;;
+  purge-plan) python3 "$script" purge-plan ;;
+  purge) python3 "$script" purge ;;
   *) exit 2 ;;
 esac
 REMOTE_SCRIPT
@@ -60,7 +62,8 @@ cleanup() {
   original_status=$?
   trap - EXIT
   if [[ -n "$monitor_pid" ]]; then kill "$monitor_pid" 2>/dev/null || true; wait "$monitor_pid" 2>/dev/null || true; fi
-  if [[ "$prepared" == true && "$BAITLY_BENCHMARK_MODE" != schema && "$BAITLY_BENCHMARK_MODE" != diagnostic ]]; then
+  if [[ "$prepared" == true && "$BAITLY_BENCHMARK_MODE" != schema && "$BAITLY_BENCHMARK_MODE" != diagnostic \
+      && "$BAITLY_BENCHMARK_MODE" != purge-plan && "$BAITLY_BENCHMARK_MODE" != purge ]]; then
     if ! remote disable; then
       echo '::error::La désactivation des clients de fixture a échoué ; relancer le mode disable.'
       original_status=1
@@ -83,6 +86,13 @@ prepared=true
 if [[ "$BAITLY_BENCHMARK_MODE" == diagnostic ]]; then
   remote diagnostic > baitly-benchmark-results/error-classes.json
   remote identity-audit > baitly-benchmark-results/fixture-identity-counts.json
+  exit 0
+fi
+# Purge du jeu de benchmark : rapport JSON (tables et nombres de lignes) seulement.
+# purge-plan joue la même transaction puis l'annule ; purge la valide et retire les clients.
+if [[ "$BAITLY_BENCHMARK_MODE" == purge-plan || "$BAITLY_BENCHMARK_MODE" == purge ]]; then
+  remote "$BAITLY_BENCHMARK_MODE" > "baitly-benchmark-results/${BAITLY_BENCHMARK_MODE}.json"
+  cat "baitly-benchmark-results/${BAITLY_BENCHMARK_MODE}.json"
   exit 0
 fi
 remote schema
