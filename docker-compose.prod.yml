@@ -642,6 +642,7 @@ services:
       CHANNEX_BASE_URL: ${CHANNEX_BASE_URL:-https://app.channex.io/api/v1}
       CHANNEX_API_KEY: ${CHANNEX_API_KEY:-}
       CHANNEX_WEBHOOK_SECRET: ${CHANNEX_WEBHOOK_SECRET:-}
+      CHANNEX_WEBHOOK_CALLBACK_URL: ${CHANNEX_WEBHOOK_CALLBACK_URL:-}
       # Token partage des alertes ops (POST /api/ops/alerts) -> clenzy.ops.alert-token.
       # Meme valeur que le secret GitHub OPS_ALERT_TOKEN et le credentials_file Alertmanager.
       CLENZY_OPS_ALERT_TOKEN: ${CLENZY_OPS_ALERT_TOKEN:-}
