@@ -213,6 +213,8 @@ jobs:
           # Contents: Read sur <owner>/clenzy) uniquement si GHCR_TOKEN n'a pas le scope repo.
           DEPLOY_APP_GIT_TOKEN: ${{ secrets.CLENZY_APP_GIT_TOKEN }}
           DEPLOY_ENV_B64: ${{ secrets.PROD_ENV_FILE_B64 }}
+          # Separate secret names prevent a staging key from reaching production.
+          DEPLOY_CHANNEX_API_KEY: ${{ matrix.target == 'staging' && secrets.BAITLY_CHANNEX_STAGING_API_KEY || matrix.target == 'production-baitly' && secrets.BAITLY_CHANNEX_PRODUCTION_API_KEY || '' }}
           DEPLOY_FORCE_ENV: ${{ github.event.client_payload.force_env_sync || github.event.inputs.force_env_sync || 'false' }}
           DEPLOY_MODE: ${{ github.event.client_payload.deploy_mode || github.event.inputs.deploy_mode || 'update' }}
           DEPLOY_SERVICES: ${{ github.event.client_payload.services || github.event.client_payload.service || github.event.inputs.services || '' }}
@@ -236,7 +238,7 @@ jobs:
           # n'apparaissent donc jamais sur la ligne de commande distante (ps) ni
           # dans le journal du runner.
           {
-            for v in DEPLOY_EXPECTED_DOMAIN DEPLOY_APP_REF DEPLOY_IMAGE_TAG DEPLOY_INFRA_SHA DEPLOY_INFRA_DIR DEPLOY_REPO DEPLOY_GHCR_OWNER DEPLOY_GHCR_TOKEN DEPLOY_GIT_TOKEN DEPLOY_APP_GIT_TOKEN DEPLOY_ENV_B64 DEPLOY_FORCE_ENV DEPLOY_MODE DEPLOY_SERVICES DEPLOY_FORCE_RECREATE DEPLOY_STORAGE_ACCESS_KEY DEPLOY_STORAGE_SECRET_KEY DEPLOY_STORAGE_BUCKET; do
+            for v in DEPLOY_EXPECTED_DOMAIN DEPLOY_APP_REF DEPLOY_IMAGE_TAG DEPLOY_INFRA_SHA DEPLOY_INFRA_DIR DEPLOY_REPO DEPLOY_GHCR_OWNER DEPLOY_GHCR_TOKEN DEPLOY_GIT_TOKEN DEPLOY_APP_GIT_TOKEN DEPLOY_ENV_B64 DEPLOY_CHANNEX_API_KEY DEPLOY_FORCE_ENV DEPLOY_MODE DEPLOY_SERVICES DEPLOY_FORCE_RECREATE DEPLOY_STORAGE_ACCESS_KEY DEPLOY_STORAGE_SECRET_KEY DEPLOY_STORAGE_BUCKET; do
               printf 'export %s=%q\n' "$v" "${!v-}"
             done
             cat <<'SCRIPT_DISTANT'
@@ -304,6 +306,9 @@ jobs:
             echo "APP_DOMAIN ne correspond pas à la cible"; exit 1
           fi
           export DEPLOY_EXPECTED_DOMAIN DEPLOY_APP_REF DEPLOY_IMAGE_TAG
+
+          # Authenticate against the instance-specific Channex API before changing services.
+          python3 scripts/baitly-channex-config.py .env "$DEPLOY_EXPECTED_DOMAIN"
 
           # --- Stockage objet OVH (fichiers de l'application) ---
           # Les cles viennent de secrets GitHub dedies : le .env complet n'a pas a etre
