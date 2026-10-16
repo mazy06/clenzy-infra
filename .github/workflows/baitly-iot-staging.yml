@@ -1,0 +1,108 @@
+name: Baitly IoT staging (manual, disabled by default)
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_run_id:
+        description: Successful CI Baitly IoT run on main
+        required: true
+        type: string
+      app_sha:
+        description: Full application commit SHA (40 hex characters)
+        required: true
+        type: string
+      bootstrap:
+        description: First install on a new dedicated Ubuntu 24.04 VM
+        type: boolean
+        default: false
+      confirmation:
+        description: Type DEPLOY IOT STAGING to authorize this run
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baitly-iot-staging
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require an explicit future activation and staging confirmation
+        env:
+          ENABLED: ${{ vars.IOT_STAGING_DEPLOY_ENABLED }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+          REF: ${{ github.ref }}
+        run: |
+          test "$ENABLED" = true
+          test "$REF" = refs/heads/main
+          test "$CONFIRMATION" = 'DEPLOY IOT STAGING'
+
+  deploy-and-qualify:
+    needs: guard
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: iot-staging
+    env:
+      APP_REPOSITORY: ${{ github.repository_owner }}/clenzy
+      APP_SHA: ${{ inputs.app_sha }}
+      APP_RUN_ID: ${{ inputs.app_run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate source before downloading executable artifacts
+        env:
+          GH_TOKEN: ${{ secrets.IOT_APP_READ_TOKEN }}
+        run: |
+          python3 -c 'import os,re; assert re.fullmatch(r"[1-9][0-9]*",os.environ["APP_RUN_ID"]); assert re.fullmatch(r"[a-f0-9]{40}",os.environ["APP_SHA"])'
+          gh api "repos/$APP_REPOSITORY/actions/runs/$APP_RUN_ID" > app-run.json
+          python3 iot/release_source.py
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ secrets.IOT_APP_READ_TOKEN }}
+          repository: ${{ env.APP_REPOSITORY }}
+          run-id: ${{ inputs.app_run_id }}
+          name: baitly-iot-release-${{ inputs.app_sha }}
+          path: release
+      - name: Deploy the dedicated IoT VM and verify forbidden connections
+        env:
+          IOT_DEPLOY_APPROVED: staging
+          IOT_HOST: ${{ vars.IOT_HOST }}
+          IOT_USER: ${{ vars.IOT_USER }}
+          IOT_SSH_PORT: ${{ vars.IOT_SSH_PORT || '22' }}
+          IOT_BOOTSTRAP: ${{ inputs.bootstrap }}
+          PMS_IP: ${{ vars.PMS_IP }}
+          PMS_DATABASE_IP: ${{ vars.PMS_DATABASE_IP }}
+          PMS_MACHINE_ID: ${{ vars.PMS_MACHINE_ID }}
+          IOT_SSH_KEY: ${{ secrets.IOT_SSH_KEY }}
+          IOT_KNOWN_HOSTS: ${{ secrets.IOT_KNOWN_HOSTS }}
+          IOT_RUNTIME_TLS_B64: ${{ secrets.IOT_RUNTIME_TLS_B64 }}
+          IOT_SERVICE_TOKEN: ${{ secrets.IOT_SERVICE_TOKEN }}
+          IOT_STORE_PASSWORD: ${{ secrets.IOT_STORE_PASSWORD }}
+        run: python3 iot/deploy_ci.py
+      - name: Install simulator dependency in the runner only
+        run: python3 -m pip install -r release/scripts/requirements.txt
+      - name: Qualify synthetic device through the real staging PMS
+        env:
+          IOT_STAGING_VALIDATION_APPROVED: 'true'
+          IOT_STAGING_PMS_TOKEN: ${{ secrets.IOT_STAGING_PMS_TOKEN }}
+          IOT_TEST_PROPERTY_ID: ${{ vars.IOT_TEST_PROPERTY_ID }}
+          IOT_MQTT_HOST: ${{ vars.IOT_MQTT_HOST }}
+          IOT_DEVICE_CA_CERT: ${{ secrets.IOT_DEVICE_CA_CERT }}
+          IOT_DEVICE_CA_KEY: ${{ secrets.IOT_DEVICE_CA_KEY }}
+          IOT_SERVER_CA_CERT: ${{ secrets.IOT_SERVER_CA_CERT }}
+        run: python3 iot/validate_staging.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: iot-staging-qualification-${{ inputs.app_sha }}
+          path: |
+            network-qualification.json
+            mqtt-staging-qualification.json
+          if-no-files-found: ignore
+          retention-days: 14

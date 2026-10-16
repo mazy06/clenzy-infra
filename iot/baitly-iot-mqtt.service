@@ -1,0 +1,27 @@
+[Unit]
+Description=Baitly device MQTT mTLS broker
+After=network-online.target baitly-iot-firewall.service
+Requires=baitly-iot-firewall.service
+
+[Service]
+User=mosquitto
+Group=mosquitto
+ExecStart=/usr/sbin/mosquitto -c /etc/baitly-mqtt/mosquitto.conf
+Restart=on-failure
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+LimitNOFILE=1024
+MemoryMax=128M
+TasksMax=16
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

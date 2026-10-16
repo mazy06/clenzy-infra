@@ -1,0 +1,30 @@
+name: CI Baitly IoT infrastructure (no deployment)
+
+on:
+  push:
+    branches: [main]
+    paths: ['iot/**', '.github/workflows/*baitly-iot*.yml']
+  pull_request:
+    paths: ['iot/**', '.github/workflows/*baitly-iot*.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 -m pip install -r iot/test-requirements.txt
+      - name: Unit and workflow security contracts (no SSH, no staging access)
+        run: python3 -m unittest discover -s iot/tests -v
+      - name: Validate native units and firewall in a disposable network namespace
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nftables mosquitto nginx
+          sudo systemd-analyze verify iot/*.service
+          sudo unshare --net python3 iot/tests/linux_firewall_check.py

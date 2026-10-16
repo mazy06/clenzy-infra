@@ -1,0 +1,32 @@
+[Unit]
+Description=Baitly isolated IoT runtime
+After=network-online.target postgresql.service baitly-iot-mqtt.service baitly-iot-firewall.service
+Requires=baitly-iot-firewall.service baitly-iot-mqtt.service
+
+[Service]
+User=baitly_iot_runtime
+Group=baitly_iot_runtime
+EnvironmentFile=/etc/baitly-iot/runtime.env
+ExecStart=/usr/bin/java -Xms64m -Xmx384m -jar /opt/baitly-iot/current/baitly-iot.jar
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+IPAddressDeny=any
+IPAddressAllow=localhost
+LimitNOFILE=1024
+TasksMax=128
+MemoryMax=512M
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

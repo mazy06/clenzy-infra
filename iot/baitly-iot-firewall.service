@@ -1,0 +1,11 @@
+[Unit]
+Description=Baitly IoT network boundary
+Before=baitly-iot.service baitly-iot-mqtt.service baitly-iot-edge.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/nft -f /etc/baitly-iot/isolation.nft
+RemainAfterExit=true
+
+[Install]
+WantedBy=multi-user.target
