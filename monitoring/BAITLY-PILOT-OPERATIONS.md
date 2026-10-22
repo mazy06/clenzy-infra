@@ -35,7 +35,8 @@ explicite obtenu pour ce moniteur. Aucune sonde de production n’est ajoutée i
 5. Promouvoir par le circuit PR/CI/CD après validation staging. Aucun changement
    manuel d’état, SQL ou redémarrage de conteneur n’est prescrit par ce guide.
 
-Le CD valide les configurations, envoie seulement SIGHUP aux deux processus de
+Avant de charger les nouvelles règles, le CD exige que les jauges backend soient
+présentes, valides et fraîches. Il valide les configurations, envoie seulement SIGHUP aux deux processus de
 monitoring puis vérifie les timestamps de relecture et les heures de démarrage
 inchangées. Cette opération est une relecture à chaud, sans stop/restart/recreate.
 Références officielles : [Prometheus](https://prometheus.io/docs/prometheus/latest/management_api/)

@@ -104,10 +104,14 @@ def reload_configuration(prometheus, alertmanager):
     print("Monitoring configurations reloaded; container start times unchanged")
 
 
-def validate(prometheus):
+def validate_backend(prometheus):
     wait_for(lambda: query(prometheus, 'min(up{job="clenzy-backend"})') == 1
              and query(prometheus, 'min(baitly_ops_snapshot_healthy{job="clenzy-backend"})') == 1
              and query(prometheus, 'max(time() - baitly_ops_snapshot_last_success_timestamp_seconds{job="clenzy-backend"})') < 120)
+
+
+def validate(prometheus):
+    validate_backend(prometheus)
     def rules_ready():
         data = json.loads(request(prometheus, "/api/v1/rules?type=alert"))
         rules = {r["name"]: r for g in data["data"]["groups"] for r in g["rules"]}
@@ -172,6 +176,8 @@ def main():
     prometheus = endpoint("clenzy-prometheus-prod", 9090)
     alertmanager = endpoint("clenzy-alertmanager-prod", 9093)
     if args.reload:
+        # Do not activate rules requiring new gauges before the backend supplies them.
+        validate_backend(prometheus)
         reload_configuration(prometheus, alertmanager)
     validate(prometheus)
     if args.canary:
