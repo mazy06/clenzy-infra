@@ -1,0 +1,199 @@
+rule_files: ['../rules/clenzy-alerts.yml']
+evaluation_interval: 1m
+tests:
+  - name: healthy idle pilot does not generate noise
+    interval: 1m
+    input_series:
+      - series: 'up{job="clenzy-backend",instance="backend:8080"}'
+        values: '1+0x20'
+      - series: 'baitly_ops_snapshot_healthy{job="clenzy-backend"}'
+        values: '1+0x20'
+      - series: 'baitly_ops_snapshot_last_success_timestamp_seconds{job="clenzy-backend"}'
+        values: '0+60x20'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: BaitlyOperationalMetricsUnavailable
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: BaitlyOperationalMetricsStale
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: BaitlyBackendHigh5xx
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: ClenzyBackendDown
+        exp_alerts: []
+  - name: low volume isolated 5xx is handled by Sentry without operational alert storm
+    interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{job="clenzy-backend",instance="backend:8080",status="500",uri="/api/test"}'
+        values: '0 1+0x19'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: BaitlyBackendHigh5xx
+        exp_alerts: []
+  - name: exhausted messages alert and recover when requeued
+    interval: 1m
+    input_series:
+      - series: 'baitly_ops_outbox_exhausted{job="clenzy-backend"}'
+        values: '1+0x5 0+0x5'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: BaitlyOutboxExhausted
+        exp_alerts:
+          - exp_labels: {job: clenzy-backend, severity: critical}
+            exp_annotations:
+              summary: "Messages outbox sans nouvelle tentative"
+              description: "Au moins un message a épuisé ses tentatives. Examiner la file interne et reprendre avec contrôle d’idempotence."
+      - eval_time: 7m
+        alertname: BaitlyOutboxExhausted
+        exp_alerts: []
+  - name: missing backend target is detected even if removed from scrape configuration
+    interval: 1m
+    input_series: []
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: ClenzyBackendDown
+        exp_alerts:
+          - exp_labels: {job: clenzy-backend, severity: critical}
+            exp_annotations:
+              summary: "Backend Baitly injoignable"
+              description: "Prometheus ne scrape plus clenzy-backend (/actuator/prometheus) depuis 5 min."
+      - eval_time: 3m
+        alertname: BaitlyOperationalMetricsUnavailable
+        exp_alerts:
+          - exp_labels: {job: clenzy-backend, severity: warning}
+            exp_annotations:
+              summary: "Collecte des métriques métier indisponible"
+              description: "Le dernier échantillon ne prouve plus la santé des files. Vérifier version, base de données et collecte."
+  - name: sustained server errors trigger after volume threshold
+    interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{job="clenzy-backend",instance="backend:8080",status="500",uri="/api/test"}'
+        values: '0+2x20'
+      - series: 'http_server_requests_seconds_count{job="clenzy-backend",instance="backend:8080",status="200",uri="/api/test"}'
+        values: '0+8x20'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: BaitlyBackendHigh5xx
+        exp_alerts:
+          - exp_labels: {job: clenzy-backend, instance: 'backend:8080', severity: critical}
+            exp_annotations:
+              summary: "Erreurs serveur Baitly répétées"
+              description: "Plus de 5 % de réponses 5xx et au moins 5 erreurs en 10 min. Examiner Sentry et la version déployée."
+  - name: stale aggregate sample must not appear healthy and recovers on fresh sample
+    interval: 1m
+    input_series:
+      - series: 'baitly_ops_snapshot_last_success_timestamp_seconds{job="clenzy-backend"}'
+        values: '0+0x8 540+60x4'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: BaitlyOperationalMetricsStale
+        exp_alerts:
+          - exp_labels: {job: clenzy-backend, severity: warning}
+            exp_annotations:
+              summary: "Métriques opérationnelles périmées"
+              description: "Aucun rafraîchissement réussi récent. Les anciens compteurs ne doivent pas être interprétés comme sains."
+      - eval_time: 11m
+        alertname: BaitlyOperationalMetricsStale
+        exp_alerts: []
+  - name: delayed work raises queue alerts
+    interval: 1m
+    input_series:
+      - series: 'baitly_ops_outbox_oldest_age_seconds{job="clenzy-backend"}'
+        values: '301+0x12'
+      - series: 'baitly_ops_webhooks_oldest_overdue_seconds{job="clenzy-backend"}'
+        values: '601+0x12'
+      - series: 'baitly_ops_webhooks_disabled{job="clenzy-backend"}'
+        values: '1+0x12'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: BaitlyOutboxStalled
+        exp_alerts:
+          - exp_labels: {job: clenzy-backend, severity: critical}
+            exp_annotations:
+              summary: "File outbox bloquée"
+              description: "Un message non envoyé attend depuis plus de 5 min. Vérifier Kafka, le relais et les reprises."
+      - eval_time: 6m
+        alertname: BaitlyWebhookDeliveryStalled
+        exp_alerts:
+          - exp_labels: {job: clenzy-backend, severity: warning}
+            exp_annotations:
+              summary: "Livraisons webhook en retard"
+              description: "Une livraison due n’a pas été traitée depuis plus de 10 min. Les attentes futures du backoff sont exclues."
+      - eval_time: 6m
+        alertname: BaitlyWebhookDisabled
+        exp_alerts:
+          - exp_labels: {job: clenzy-backend, severity: warning}
+            exp_annotations:
+              summary: "Intégration webhook désactivée après échecs"
+              description: "Une configuration est en échec. Vérifier le journal interne avant réactivation ; ne pas exposer sa destination dans l’alerte."
+  - name: sustained latency is measured from histogram with sufficient traffic
+    interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_bucket{job="clenzy-backend",instance="backend:8080",uri="/api/test",le="2"}'
+        values: '0+0x25'
+      - series: 'http_server_requests_seconds_bucket{job="clenzy-backend",instance="backend:8080",uri="/api/test",le="5"}'
+        values: '0+10x25'
+      - series: 'http_server_requests_seconds_bucket{job="clenzy-backend",instance="backend:8080",uri="/api/test",le="+Inf"}'
+        values: '0+10x25'
+      - series: 'http_server_requests_seconds_count{job="clenzy-backend",instance="backend:8080",uri="/api/test"}'
+        values: '0+10x25'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: BaitlyBackendSlow
+        exp_alerts:
+          - exp_labels: {job: clenzy-backend, instance: 'backend:8080', severity: warning}
+            exp_annotations:
+              summary: "Latence backend élevée"
+              description: "Le p95 dépasse 2 s avec un trafic suffisant. Examiner saturation DB, JVM et dépendances."
+  - name: resource pressure is actionable and has a persistence window
+    interval: 1m
+    input_series:
+      - series: 'hikaricp_connections_pending{job="clenzy-backend"}'
+        values: '1+0x20'
+      - series: 'jvm_memory_used_bytes{job="clenzy-backend",area="heap"}'
+        values: '95+0x20'
+      - series: 'jvm_memory_max_bytes{job="clenzy-backend",area="heap"}'
+        values: '100+0x20'
+      - series: 'disk_free_bytes{job="clenzy-backend"}'
+        values: '5+0x20'
+      - series: 'disk_total_bytes{job="clenzy-backend"}'
+        values: '100+0x20'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: BaitlyDatabasePoolSaturated
+        exp_alerts:
+          - exp_labels: {job: clenzy-backend, severity: critical}
+            exp_annotations:
+              summary: "Connexions base de données en attente"
+              description: "Le pool Hikari ne sert plus toutes les demandes depuis 5 min. Vérifier DB et transactions longues."
+      - eval_time: 11m
+        alertname: BaitlyJvmHeapPressure
+        exp_alerts:
+          - exp_labels: {job: clenzy-backend, severity: warning}
+            exp_annotations:
+              summary: "Pression mémoire JVM"
+              description: "Plus de 90 % du heap utilisé depuis 10 min. Examiner GC et croissance mémoire avant incident."
+      - eval_time: 11m
+        alertname: BaitlyBackendDiskLow
+        exp_alerts:
+          - exp_labels: {job: clenzy-backend, severity: critical}
+            exp_annotations:
+              summary: "Espace disque backend faible"
+              description: "Moins de 10 % d’espace disque libre. Examiner stockage et rétention sans supprimer de preuve métier."
+  - name: channel failures are aggregated without channel or customer labels in notifications
+    interval: 1m
+    input_series:
+      - series: 'pms_sync_failure_total{job="clenzy-backend",instance="backend:8080",channel="AIRBNB",error_type="TimeoutException"}'
+        values: '0+1x20'
+      - series: 'pms_sync_success_total{job="clenzy-backend",instance="backend:8080",channel="AIRBNB"}'
+        values: '0+0x20'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: BaitlyChannelSyncFailures
+        exp_alerts:
+          - exp_labels: {job: clenzy-backend, instance: 'backend:8080', severity: warning}
+            exp_annotations:
+              summary: "Synchronisations des canaux en échec"
+              description: "Plus de 20 % d’échecs et au moins 3 erreurs en 10 min. Examiner le canal dans l’administration et rapprocher les disponibilités."
