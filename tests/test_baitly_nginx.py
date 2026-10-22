@@ -108,9 +108,9 @@ class NginxSecurity(unittest.TestCase):
         finally:
             connection.close()
 
-    def test_sentry_ingestion_is_limited_to_staging_and_one_eu_organization(self):
-        self.start_nginx(app_domain='app.clenzy.fr')
-        status, headers, _ = self.request('/', host='app.clenzy.fr')
+    def assert_pms_sentry_policy(self, domain):
+        self.start_nginx(app_domain=domain)
+        status, headers, _ = self.request('/', host=domain)
         self.assertEqual(status, 200)
         policy = headers['Content-Security-Policy']
         self.assertIn('https://o4512297046048768.ingest.de.sentry.io', policy)
@@ -119,6 +119,12 @@ class NginxSecurity(unittest.TestCase):
         status, headers, _ = self.request('/', host='site.baitly.test')
         self.assertEqual(status, 200)
         self.assertNotIn('ingest.de.sentry.io', headers['Content-Security-Policy'])
+
+    def test_staging_sentry_ingestion_is_limited_to_one_eu_organization(self):
+        self.assert_pms_sentry_policy('app.clenzy.fr')
+
+    def test_production_sentry_ingestion_is_limited_to_one_eu_organization(self):
+        self.assert_pms_sentry_policy('app.baitly.fr')
 
     def test_sensitive_paths_headers_discovery_and_limits(self):
         self.start_nginx()

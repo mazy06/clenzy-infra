@@ -226,7 +226,7 @@ jobs:
           DEPLOY_STORAGE_ACCESS_KEY: ${{ secrets.STORAGE_OBJECT_ACCESS_KEY }}
           DEPLOY_STORAGE_SECRET_KEY: ${{ secrets.STORAGE_OBJECT_SECRET_KEY }}
           DEPLOY_STORAGE_BUCKET: ${{ vars.STORAGE_OBJECT_BUCKET }}
-          # Public ingestion key, scoped to the historical staging GitHub environment.
+          # Public destinations scoped to each GitHub environment; the script verifies project isolation.
           DEPLOY_POSTHOG_KEY: ${{ vars.VITE_POSTHOG_KEY }}
           DEPLOY_SENTRY_WEB_DSN: ${{ vars.VITE_SENTRY_DSN }}
           DEPLOY_SENTRY_API_DSN: ${{ vars.SENTRY_DSN }}
@@ -311,8 +311,8 @@ jobs:
           fi
           export DEPLOY_EXPECTED_DOMAIN DEPLOY_APP_REF DEPLOY_IMAGE_TAG
 
-          # Explicit staging destination; no change to production or SDK consent gates.
-          bash scripts/baitly-staging-telemetry.sh
+          # Refuse mismatched analytics projects before modifying services. Consent gates remain in the SDK.
+          python3 scripts/baitly-telemetry-config.py
 
           # Authenticate against the instance-specific Channex API before changing services.
           python3 scripts/baitly-channex-config.py .env "$DEPLOY_EXPECTED_DOMAIN"
