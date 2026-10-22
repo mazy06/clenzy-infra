@@ -131,7 +131,7 @@ class RealDatabaseTest(unittest.TestCase):
 
 
 class BackupCommandTest(unittest.TestCase):
-    def fixture(self, failure=""):
+    def fixture(self, failure="", legacy=False):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
         root = pathlib.Path(temp.name)
@@ -161,6 +161,11 @@ sys.exit(99)
         env = dict(os.environ, PATH=str(binary)+os.pathsep+os.environ["PATH"],
                    FIXTURE_LOG=str(root / "calls.jsonl"), FIXTURE_FAILURE=failure)
         output = root / "output"
+        if legacy:
+            (output / "prod").mkdir(parents=True)
+            previous = output / "prod" / "clenzy_backup_prod_20990101_000000.tar.gz"
+            previous.write_bytes(b"legacy-fixture-not-read-or-rewritten")
+            previous.chmod(0o644)
         result = subprocess.run(["bash", str(backup / "backup.sh"), "--env", "prod", "--db-only", "--backup-dir", str(output)],
                                 env=env, capture_output=True)
         return root, output, result
@@ -170,6 +175,14 @@ sys.exit(99)
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(list(output.rglob("*.tar.gz")), [])
         self.assertNotIn(b"PRIVATE FIXTURE SECRET", result.stdout + result.stderr)
+
+    def test_existing_archives_are_made_private_without_rewriting_content(self):
+        root, output, result = self.fixture(legacy=True)
+        self.assertEqual(result.returncode, 0, result.stderr.decode())
+        previous = output / "prod" / "clenzy_backup_prod_20990101_000000.tar.gz"
+        self.assertEqual(previous.stat().st_mode & 0o777, 0o600)
+        self.assertEqual((output / "prod").stat().st_mode & 0o777, 0o700)
+        self.assertEqual(previous.read_bytes(), b"legacy-fixture-not-read-or-rewritten")
 
     def test_both_dumps_and_private_verified_archive_are_required(self):
         root, output, result = self.fixture()

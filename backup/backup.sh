@@ -94,6 +94,9 @@ check_container() {
 log "🚀 Démarrage backup Baitly [$ENV] → $BACKUP_DIR"
 mkdir -p "$BACKUP_ROOT/$ENV"
 chmod 700 "$BACKUP_ROOT/$ENV"
+for previous in "$BACKUP_ROOT/$ENV"/clenzy_backup_${ENV}_*.tar.gz; do
+    if [ -f "$previous" ] && [ ! -L "$previous" ]; then chmod 600 "$previous"; fi
+done
 # A same-second invocation must not overwrite an earlier snapshot.
 mkdir "$BACKUP_DIR"
 ARCHIVE_PARTIAL=""
