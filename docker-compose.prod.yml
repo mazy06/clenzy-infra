@@ -537,6 +537,12 @@ services:
       TURNSTILE_ALLOWED_HOSTNAMES: ${TURNSTILE_ALLOWED_HOSTNAMES:-}
       SPRING_PROFILES_ACTIVE: prod
       SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+      SENTRY_RELEASE: baitly@${PMS_SERVER_IMAGE_TAG:-unknown}
+      SENTRY_TRACES_SAMPLE_RATE: "0"
+      SENTRY_ENABLE_TRACING: "false"
+      SENTRY_SEND_DEFAULT_PII: "false"
       # Liquibase reactive (Phase 5b, 2026-05-21) apres :
       #   - Plan en 5 phases sur clenzy + clenzy-infra (DB Status quotidien,
       #     ruleset Protect production avec immutable-changesets +
@@ -862,7 +868,7 @@ services:
       # BACKEND (clenzy-api). Le front utilise le client public clenzy-web.
       VITE_KEYCLOAK_CLIENT_ID: ${VITE_KEYCLOAK_CLIENT_ID:-clenzy-web}
       VITE_APP_NAME: ${VITE_APP_NAME:-Baitly}
-      VITE_ENV: production
+      VITE_ENV: ${VITE_ENV:-production}
       VITE_STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
       VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
       VITE_POSTHOG_KEY: ${VITE_POSTHOG_KEY:-}

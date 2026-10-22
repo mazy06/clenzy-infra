@@ -86,8 +86,13 @@ http {
         ${APP_DOMAIN} "";
         ${AUTH_DOMAIN} "";
     }
+    # The staging browser may contact only this verified Sentry organization in the EU.
+    map $host $baitly_staging_sentry_connect {
+        default "";
+        app.clenzy.fr https://o4512297046048768.ingest.de.sentry.io;
+    }
     map $host $baitly_csp {
-        default "default-src 'self'; media-src 'self' blob:; worker-src 'self' blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src 'self' https://*.${DOMAIN} https://geo.api.gouv.fr https://eu.i.posthog.com https://ipapi.co https://api.stripe.com https://open.er-api.com; frame-src 'self' blob: https://auth.${DOMAIN} https://js.stripe.com https://challenges.cloudflare.com; frame-ancestors 'self' https://auth.${DOMAIN}; object-src 'self' blob:";
+        default "default-src 'self'; media-src 'self' blob:; worker-src 'self' blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src 'self' https://*.${DOMAIN} https://geo.api.gouv.fr https://eu.i.posthog.com $baitly_staging_sentry_connect https://ipapi.co https://api.stripe.com https://open.er-api.com; frame-src 'self' blob: https://auth.${DOMAIN} https://js.stripe.com https://challenges.cloudflare.com; frame-ancestors 'self' https://auth.${DOMAIN}; object-src 'self' blob:";
         ${AUTH_DOMAIN} "frame-src 'self'; frame-ancestors 'self' https://${APP_DOMAIN}; object-src 'none'";
     }
     include /etc/nginx/baitly/request-maps.conf;

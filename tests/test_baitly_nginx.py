@@ -38,7 +38,7 @@ class Upstream(http.server.BaseHTTPRequestHandler):
 
 
 class NginxSecurity(unittest.TestCase):
-    def start_nginx(self, lockdown=False, trusted=False):
+    def start_nginx(self, lockdown=False, trusted=False, app_domain='app.baitly.test'):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         directory = Path(self.temp.name)
@@ -58,7 +58,7 @@ class NginxSecurity(unittest.TestCase):
                         '-subj', '/CN=baitly.test', '-keyout', str(directory / 'privkey.pem'),
                         '-out', str(directory / 'fullchain.pem')], check=True, capture_output=True)
         conf = (ROOT / 'nginx/nginx.conf.template').read_text()
-        substitutions = dict(DOMAIN='baitly.test', APP_DOMAIN='app.baitly.test', AUTH_DOMAIN='auth.baitly.test',
+        substitutions = dict(DOMAIN='baitly.test', APP_DOMAIN=app_domain, AUTH_DOMAIN='auth.baitly.test',
                              MONITORING_DOMAIN='monitoring.baitly.test', PROMETHEUS_DOMAIN='prometheus.baitly.test',
                              KAFKA_UI_DOMAIN='kafka.baitly.test', SITE_DOMAIN='site.baitly.test',
                              ROOT_SITE_SERVER='clenzy-landing', CERTBOT_CERT_NAME='baitly.test',
@@ -108,6 +108,18 @@ class NginxSecurity(unittest.TestCase):
         finally:
             connection.close()
 
+    def test_sentry_ingestion_is_limited_to_staging_and_one_eu_organization(self):
+        self.start_nginx(app_domain='app.clenzy.fr')
+        status, headers, _ = self.request('/', host='app.clenzy.fr')
+        self.assertEqual(status, 200)
+        policy = headers['Content-Security-Policy']
+        self.assertIn('https://o4512297046048768.ingest.de.sentry.io', policy)
+        self.assertNotIn('https://*.sentry.io', policy)
+        self.assertIn("object-src 'self' blob:", policy)
+        status, headers, _ = self.request('/', host='site.baitly.test')
+        self.assertEqual(status, 200)
+        self.assertNotIn('ingest.de.sentry.io', headers['Content-Security-Policy'])
+
     def test_sensitive_paths_headers_discovery_and_limits(self):
         self.start_nginx()
         for host in ('baitly.test', 'app.baitly.test', 'site.baitly.test'):
@@ -121,6 +133,7 @@ class NginxSecurity(unittest.TestCase):
                 self.assertEqual(status, 200, (host, path))
                 self.assertIn('Strict-Transport-Security', headers)
                 self.assertIn('https://challenges.cloudflare.com', headers['Content-Security-Policy'])
+                self.assertNotIn('ingest.de.sentry.io', headers['Content-Security-Policy'])
                 self.assertNotIn('nginx/', headers.get('Server', ''))
                 if path == '/baitly-config.js':
                     self.assertIn('no-store', headers['Cache-Control'])
