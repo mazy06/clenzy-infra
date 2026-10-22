@@ -6,6 +6,11 @@ on:
         description: 'Expected deployed backend SHA (40 hexadecimal characters)'
         required: true
         type: string
+      send_canary:
+        description: 'Send synthetic firing/resolved in-app notifications to active platform staff (explicit authorization required)'
+        required: true
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -26,12 +31,13 @@ jobs:
           INFRA_DIR_VALUE: ${{ vars.VPS_INFRA_DIR }}
           EXPECTED_INFRA_SHA: ${{ github.sha }}
           EXPECTED_BACKEND_SHA: ${{ inputs.backend_sha }}
+          SEND_CANARY: ${{ inputs.send_canary }}
         with:
           host: ${{ secrets.VPS_HOST != '' && secrets.VPS_HOST || vars.VPS_HOST }}
           username: ${{ secrets.VPS_USER != '' && secrets.VPS_USER || vars.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT || 22 }}
-          envs: INFRA_DIR_VALUE,EXPECTED_INFRA_SHA,EXPECTED_BACKEND_SHA
+          envs: INFRA_DIR_VALUE,EXPECTED_INFRA_SHA,EXPECTED_BACKEND_SHA,SEND_CANARY
           command_timeout: 10m
           script: |
             set -eu
@@ -41,4 +47,8 @@ jobs:
             [ "$(git rev-parse HEAD)" = "$EXPECTED_INFRA_SHA" ] || exit 1
             image=$(docker inspect --format '{{.Config.Image}}' clenzy-server-prod)
             [ "${image##*:}" = "$EXPECTED_BACKEND_SHA" ] || exit 1
-            python3 scripts/baitly-pilot-monitoring.py --canary
+            if [ "$SEND_CANARY" = true ]; then
+              python3 scripts/baitly-pilot-monitoring.py --canary
+            else
+              python3 scripts/baitly-pilot-monitoring.py
+            fi

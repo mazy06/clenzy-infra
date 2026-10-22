@@ -43,8 +43,10 @@ Références officielles : [Prometheus](https://prometheus.io/docs/prometheus/la
 et [Alertmanager](https://prometheus.io/docs/alerting/latest/configuration/).
 
 Après le CD, lancer `Baitly pilot staging qualification` sur `main` avec le SHA
-backend livré. Le workflow vérifie les deux versions, les agrégats, les règles
-chargées et les notifications synthétiques firing/resolved. Il refuse d’envoyer
+backend livré. Par défaut, le workflow ne fait que vérifier versions, agrégats et
+règles. `send_canary=true` exige l’autorisation explicite d’envoyer deux
+notifications internes aux SUPER_ADMIN/SUPER_MANAGER actifs du staging, dont les
+préférences OPS sont actives. Cette option teste firing/resolved ; elle refuse d’envoyer
 un canari si `APP_DOMAIN` n’est pas `app.clenzy.fr`. L’alerte de recette est
 `BaitlyPilotCanary_<identifiant éphémère>` : le récepteur la ramène volontairement
 au nom générique `MonitoringAlert`, avec sévérité info. Aucun identifiant client
