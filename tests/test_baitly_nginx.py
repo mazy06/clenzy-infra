@@ -23,6 +23,25 @@ def port():
         return sock.getsockname()[1]
 
 
+def remap_listener_ports(conf, http_port, https_port):
+    # One pass: an assigned HTTP port beginning with 443 must not be remapped again.
+    ports = {'80': http_port, '443': https_port}
+    return re.sub(r'(?m)^(\s*listen\s+)(80|443)(?=\s|;)',
+                  lambda match: match[1] + str(ports[match[2]]), conf)
+
+
+class ListenerPortRemapping(unittest.TestCase):
+    def test_http_port_starting_with_https_digits_is_not_rewritten_twice(self):
+        conf = '    listen 80;\n    listen 443 ssl;\n'
+        self.assertEqual(remap_listener_ports(conf, 44367, 59671),
+                         '    listen 44367;\n    listen 59671 ssl;\n')
+
+    def test_other_listener_ports_are_preserved(self):
+        conf = 'listen 8080;\nlisten 44300 ssl;\nlisten 80 default_server;\n'
+        self.assertEqual(remap_listener_ports(conf, 49152, 55000),
+                         'listen 8080;\nlisten 44300 ssl;\nlisten 49152 default_server;\n')
+
+
 class Upstream(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -72,7 +91,7 @@ class NginxSecurity(unittest.TestCase):
         conf = conf.replace('/var/log/nginx/', str(directory) + '/')
         conf = conf.replace('/var/run/nginx.pid', str(directory / 'nginx.pid'))
         conf = conf.replace('/var/www/certbot', str(directory))
-        conf = conf.replace('listen 80', f'listen {self.http_port}').replace('listen 443', f'listen {self.https_port}')
+        conf = remap_listener_ports(conf, self.http_port, self.https_port)
         conf = re.sub(r'(clenzy-[a-z-]+|baitly-site|grafana|prometheus|kafka-ui):\d+',
                       f'127.0.0.1:{upstream.server_port}', conf)
         conf = conf.replace('http://baitly-site;', f'http://127.0.0.1:{upstream.server_port};')

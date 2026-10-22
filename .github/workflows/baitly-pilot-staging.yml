@@ -2,6 +2,10 @@ name: Baitly pilot staging qualification
 on:
   workflow_dispatch:
     inputs:
+      infra_sha:
+        description: 'Expected deployed infrastructure SHA from the successful CD run (40 hexadecimal characters)'
+        required: true
+        type: string
       backend_sha:
         description: 'Expected deployed backend SHA (40 hexadecimal characters)'
         required: true
@@ -29,7 +33,7 @@ jobs:
         uses: appleboy/ssh-action@v1
         env:
           INFRA_DIR_VALUE: ${{ vars.VPS_INFRA_DIR }}
-          EXPECTED_INFRA_SHA: ${{ github.sha }}
+          EXPECTED_INFRA_SHA: ${{ inputs.infra_sha }}
           EXPECTED_BACKEND_SHA: ${{ inputs.backend_sha }}
           SEND_CANARY: ${{ inputs.send_canary }}
         with:
@@ -41,6 +45,8 @@ jobs:
           command_timeout: 10m
           script: |
             set -eu
+            case "$EXPECTED_INFRA_SHA" in *[!0-9a-f]*|'') exit 1;; esac
+            [ "${#EXPECTED_INFRA_SHA}" -eq 40 ] || exit 1
             case "$EXPECTED_BACKEND_SHA" in *[!0-9a-f]*|'') exit 1;; esac
             [ "${#EXPECTED_BACKEND_SHA}" -eq 40 ] || exit 1
             cd "${INFRA_DIR_VALUE:-$HOME/clenzy-infra}"
