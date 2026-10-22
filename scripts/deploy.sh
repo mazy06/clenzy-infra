@@ -59,8 +59,7 @@ trap on_exit EXIT
 # On ecrit TOUJOURS le fichier (vide si token absent) : Alertmanager refuse de demarrer
 # si son credentials_file est introuvable. Vide -> l'app rejette (fail-closed), mais le
 # conteneur tourne au lieu de crash-looper.
-mkdir -p monitoring/alertmanager
-( umask 077; printf '%s' "${CLENZY_OPS_ALERT_TOKEN:-}" > monitoring/alertmanager/ops_token )
+bash scripts/baitly-alertmanager-token.sh
 if [ -n "${CLENZY_OPS_ALERT_TOKEN:-}" ]; then
   echo "🔐 Token Alertmanager provisionne (monitoring/alertmanager/ops_token)."
 else
