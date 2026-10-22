@@ -1,0 +1,30 @@
+name: CI Baitly monitoring (no deployment)
+on:
+  pull_request:
+    paths: ['monitoring/prometheus/**', 'monitoring/alertmanager/**', 'scripts/baitly-pilot-monitoring.py', 'scripts/tests/test_baitly_pilot_monitoring.py', 'scripts/deploy.sh', '.github/workflows/ci-baitly-monitoring.yml', '.github/workflows/baitly-pilot-staging.yml']
+  push:
+    branches: [main]
+    paths: ['monitoring/prometheus/**', 'monitoring/alertmanager/**', 'scripts/baitly-pilot-monitoring.py', 'scripts/tests/test_baitly_pilot_monitoring.py', 'scripts/deploy.sh', '.github/workflows/ci-baitly-monitoring.yml', '.github/workflows/baitly-pilot-staging.yml']
+permissions:
+  contents: read
+jobs:
+  rules:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test reload and staging qualification safeguards
+        run: |
+          python3 -m unittest discover -s scripts/tests -p 'test_baitly_pilot_monitoring.py'
+          bash -n scripts/deploy.sh
+      - name: Validate Prometheus rules and simulate incidents and recoveries
+        run: |
+          docker run --rm --entrypoint promtool -v "$PWD/monitoring/prometheus:/work:ro" -w /work/tests prom/prometheus:v2.51.0 check rules /work/rules/clenzy-alerts.yml
+          docker run --rm --entrypoint promtool -v "$PWD/monitoring/prometheus:/work:ro" -w /work/tests prom/prometheus:v2.51.0 test rules baitly-pilot.test.yml
+      - name: Validate Alertmanager routing without sending notifications
+        run: |
+          mkdir -p "$RUNNER_TEMP/baitly-alertmanager"
+          cp monitoring/alertmanager/alertmanager.yml "$RUNNER_TEMP/baitly-alertmanager/alertmanager.yml"
+          printf 'ci-fixture-not-a-secret' > "$RUNNER_TEMP/baitly-alertmanager/ops_token"
+          docker run --rm --entrypoint amtool -v "$RUNNER_TEMP/baitly-alertmanager:/etc/alertmanager:ro" prom/alertmanager:v0.27.0 check-config /etc/alertmanager/alertmanager.yml
+          docker run --rm --entrypoint amtool -v "$RUNNER_TEMP/baitly-alertmanager:/etc/alertmanager:ro" prom/alertmanager:v0.27.0 config routes test --config.file=/etc/alertmanager/alertmanager.yml --verify.receivers=clenzy-inapp alertname=BaitlyOutboxExhausted severity=critical job=clenzy-backend

@@ -1,5 +1,5 @@
 # ===========================================
-# Clenzy — Regles d'alerte Prometheus
+# Baitly — Regles d'alerte Prometheus
 # ===========================================
 # Routees vers Alertmanager -> webhook -> POST /api/ops/alerts/alertmanager
 # -> notification in-app pour le staff plateforme.
@@ -35,12 +35,12 @@ groups:
     rules:
       # Backend injoignable par Prometheus (scrape down).
       - alert: ClenzyBackendDown
-        expr: up{job="clenzy-backend"} == 0
+        expr: up{job="clenzy-backend"} == 0 or absent(up{job="clenzy-backend"})
         for: 5m
         labels:
           severity: critical
         annotations:
-          summary: "Backend Clenzy injoignable"
+          summary: "Backend Baitly injoignable"
           description: "Prometheus ne scrape plus clenzy-backend (/actuator/prometheus) depuis 5 min."
 
       # Pics d'echecs de generation de documents (symptome : devis/factures en echec).
@@ -52,3 +52,109 @@ groups:
         annotations:
           summary: "Echecs de generation de documents"
           description: "{{ $value | printf \"%.0f\" }} echec(s) de generation de document sur les 15 dernieres minutes."
+
+  - name: baitly-pilot
+    rules:
+      - alert: BaitlyBackendHigh5xx
+        expr: |
+          (sum by(job,instance) (rate(http_server_requests_seconds_count{job="clenzy-backend",status=~"5..",uri!~"/actuator.*"}[5m]))
+          / clamp_min(sum by(job,instance) (rate(http_server_requests_seconds_count{job="clenzy-backend",uri!~"/actuator.*"}[5m])), 0.0001) > 0.05)
+          and sum by(job,instance) (increase(http_server_requests_seconds_count{job="clenzy-backend",status=~"5..",uri!~"/actuator.*"}[10m])) >= 5
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "Erreurs serveur Baitly répétées"
+          description: "Plus de 5 % de réponses 5xx et au moins 5 erreurs en 10 min. Examiner Sentry et la version déployée."
+
+      - alert: BaitlyBackendSlow
+        expr: |
+          (histogram_quantile(0.95, sum by(le,job,instance) (rate(http_server_requests_seconds_bucket{job="clenzy-backend",uri!~"/actuator.*"}[5m]))) > 2)
+          and sum by(job,instance) (increase(http_server_requests_seconds_count{job="clenzy-backend",uri!~"/actuator.*"}[10m])) >= 20
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Latence backend élevée"
+          description: "Le p95 dépasse 2 s avec un trafic suffisant. Examiner saturation DB, JVM et dépendances."
+
+      - alert: BaitlyDatabasePoolSaturated
+        expr: hikaricp_connections_pending{job="clenzy-backend"} > 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "Connexions base de données en attente"
+          description: "Le pool Hikari ne sert plus toutes les demandes depuis 5 min. Vérifier DB et transactions longues."
+
+      - alert: BaitlyJvmHeapPressure
+        expr: sum by(job,instance) (jvm_memory_used_bytes{job="clenzy-backend",area="heap"}) / clamp_min(sum by(job,instance) (jvm_memory_max_bytes{job="clenzy-backend",area="heap"} > 0), 1) > 0.90
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Pression mémoire JVM"
+          description: "Plus de 90 % du heap utilisé depuis 10 min. Examiner GC et croissance mémoire avant incident."
+
+      - alert: BaitlyBackendDiskLow
+        expr: disk_free_bytes{job="clenzy-backend"} / clamp_min(disk_total_bytes{job="clenzy-backend"}, 1) < 0.10
+        for: 10m
+        labels: {severity: critical}
+        annotations:
+          summary: "Espace disque backend faible"
+          description: "Moins de 10 % d’espace disque libre. Examiner stockage et rétention sans supprimer de preuve métier."
+
+      - alert: BaitlyOperationalMetricsUnavailable
+        expr: baitly_ops_snapshot_healthy{job="clenzy-backend"} == 0 or absent(baitly_ops_snapshot_healthy{job="clenzy-backend"})
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "Collecte des métriques métier indisponible"
+          description: "Le dernier échantillon ne prouve plus la santé des files. Vérifier version, base de données et collecte."
+
+      - alert: BaitlyOperationalMetricsStale
+        expr: time() - baitly_ops_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} > 120
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "Métriques opérationnelles périmées"
+          description: "Aucun rafraîchissement réussi récent. Les anciens compteurs ne doivent pas être interprétés comme sains."
+
+      - alert: BaitlyOutboxExhausted
+        expr: baitly_ops_outbox_exhausted{job="clenzy-backend"} > 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "Messages outbox sans nouvelle tentative"
+          description: "Au moins un message a épuisé ses tentatives. Examiner la file interne et reprendre avec contrôle d’idempotence."
+
+      - alert: BaitlyOutboxStalled
+        expr: baitly_ops_outbox_oldest_age_seconds{job="clenzy-backend"} > 300
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "File outbox bloquée"
+          description: "Un message non envoyé attend depuis plus de 5 min. Vérifier Kafka, le relais et les reprises."
+
+      - alert: BaitlyWebhookDeliveryStalled
+        expr: baitly_ops_webhooks_oldest_overdue_seconds{job="clenzy-backend"} > 600
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Livraisons webhook en retard"
+          description: "Une livraison due n’a pas été traitée depuis plus de 10 min. Les attentes futures du backoff sont exclues."
+
+      - alert: BaitlyWebhookDisabled
+        expr: baitly_ops_webhooks_disabled{job="clenzy-backend"} > 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Intégration webhook désactivée après échecs"
+          description: "Une configuration est en échec. Vérifier le journal interne avant réactivation ; ne pas exposer sa destination dans l’alerte."
+
+      - alert: BaitlyChannelSyncFailures
+        expr: |
+          (sum by(job,instance) (rate(pms_sync_failure_total{job="clenzy-backend"}[10m]))
+          / clamp_min(sum by(job,instance) (rate({job="clenzy-backend",__name__=~"pms_sync_(success|failure)_total"}[10m])), 0.0001) > 0.20)
+          and sum by(job,instance) (increase(pms_sync_failure_total{job="clenzy-backend"}[10m])) >= 3
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Synchronisations des canaux en échec"
+          description: "Plus de 20 % d’échecs et au moins 3 erreurs en 10 min. Examiner le canal dans l’administration et rapprocher les disponibilités."

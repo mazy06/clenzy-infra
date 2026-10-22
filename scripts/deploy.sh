@@ -331,6 +331,7 @@ fi
 # ===========================================
 # 3b. Detection crash-loop + recovery
 # ===========================================
+
 # Delai pour laisser les services demarrer et potentiellement crasher.
 # Keycloak est protege par le wrapper entrypoint mais on garde ce filet
 # de securite pour tous les services critiques.
@@ -633,6 +634,11 @@ if [ $FAILED -eq 1 ]; then
   echo "   Verifiez les logs : docker compose -f docker-compose.prod.yml logs"
   exit 1
 else
+  # Bind-mounted monitoring files are not reloaded by compose up. Validate and
+  # reload them with SIGHUP after backend readiness, without container restarts.
+  if [ -z "$SERVICES_LIST" ] || [[ " $SERVICES_LIST " == *" prometheus "* ]] || [[ " $SERVICES_LIST " == *" alertmanager "* ]]; then
+    python3 scripts/baitly-pilot-monitoring.py --reload
+  fi
   echo "✅ Tous les services sont operationnels !"
   echo ""
   echo "🌐 Services accessibles :"
