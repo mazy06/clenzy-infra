@@ -115,9 +115,10 @@ rtk proxy amtool config routes test --config.file=monitoring/alertmanager/alertm
 La CI exécute les mêmes validations dans des conteneurs éphémères, sans accéder
 aux serveurs. Dix scénarios couvrent déclenchement, retour à la normale, métriques
 absentes/périmées, files retardées, ressources saturées et silence à faible trafic.
-Neuf tests Python vérifient relecture, absence de restart, erreurs sans données
+Dix tests Python vérifient relecture, absence de restart, erreurs sans données
 privées, refus des IP externes, refus du canari en production et rétablissement
 même après un échec de recette.
+Une absence de métriques backend interdit le chargement des nouvelles règles.
 Les fixtures restent hors du répertoire `rules/`, chargé par wildcard en production.
 
 Ne pas clôturer FR11 sur la seule base de ces tests : il reste le déploiement,

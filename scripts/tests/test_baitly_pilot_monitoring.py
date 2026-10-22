@@ -74,6 +74,14 @@ class PilotTests(unittest.TestCase):
                 pilot.notification_count("private-input", 1700000000)
             self.assertEqual(command.call_count, 1)
 
+    def test_missing_backend_samples_prevent_rule_activation(self):
+        with patch("sys.argv", ["pilot", "--reload"]), patch.object(pilot, "endpoint", return_value="private"), \
+             patch.object(pilot, "validate_backend", side_effect=RuntimeError("not ready")), \
+             patch.object(pilot, "reload_configuration") as reload:
+            with self.assertRaisesRegex(RuntimeError, "not ready"):
+                pilot.main()
+            reload.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
