@@ -57,6 +57,7 @@ class PilotTests(unittest.TestCase):
 
     def test_failed_canary_still_sends_resolution_without_private_data(self):
         with patch.object(pilot.pathlib.Path, "read_text", return_value="APP_DOMAIN=app.clenzy.fr"), \
+             patch.object(pilot, "notification_count", return_value=0), \
              patch.object(pilot, "query", return_value=0), patch.object(pilot, "wait_for", side_effect=RuntimeError("timeout")), \
              patch.object(pilot, "request") as request:
             with self.assertRaisesRegex(RuntimeError, "timeout"):
@@ -64,6 +65,14 @@ class PilotTests(unittest.TestCase):
             self.assertEqual(request.call_count, 2)
             self.assertEqual(request.call_args.args[1], "/api/v2/alerts")
             self.assertEqual(request.call_args.args[2][0]["labels"]["job"], "baitly-pilot-recipe")
+
+    def test_notification_proof_returns_only_count_and_rejects_free_text(self):
+        with patch.object(pilot, "command", return_value="2\n") as command:
+            self.assertEqual(pilot.notification_count("firing", 1700000000), 2)
+            self.assertIn("SELECT count(*)", command.call_args.args[-1])
+            with self.assertRaises(RuntimeError):
+                pilot.notification_count("private-input", 1700000000)
+            self.assertEqual(command.call_count, 1)
 
 
 if __name__ == "__main__":

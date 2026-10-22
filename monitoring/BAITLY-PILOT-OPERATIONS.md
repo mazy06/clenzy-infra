@@ -49,8 +49,10 @@ un canari si `APP_DOMAIN` n’est pas `app.clenzy.fr`. L’alerte de recette est
 au nom générique `MonitoringAlert`, avec sévérité info. Aucun identifiant client
 ni secret n’est envoyé. Le rétablissement est envoyé même en cas d’échec de test ;
 le canari expire automatiquement après 10 minutes comme filet de sécurité.
-Le compteur prouve l’acceptation par le service de notification, pas la lecture
-par le destinataire. La répétition peut prendre cinq minutes avant le resolved.
+La recette exige également une augmentation du nombre de notifications OPS_ALERT
+correspondantes enregistrées en base, via un SELECT agrégé sans destinataire ni
+contenu retourné. Elle ne prouve pas la lecture par le destinataire. La répétition
+peut prendre cinq minutes avant le resolved.
 
 ## Seuils de départ à calibrer pendant le pilote
 
@@ -112,7 +114,7 @@ rtk proxy amtool config routes test --config.file=monitoring/alertmanager/alertm
 La CI exécute les mêmes validations dans des conteneurs éphémères, sans accéder
 aux serveurs. Dix scénarios couvrent déclenchement, retour à la normale, métriques
 absentes/périmées, files retardées, ressources saturées et silence à faible trafic.
-Huit tests Python vérifient relecture, absence de restart, erreurs sans données
+Neuf tests Python vérifient relecture, absence de restart, erreurs sans données
 privées, refus des IP externes, refus du canari en production et rétablissement
 même après un échec de recette.
 Les fixtures restent hors du répertoire `rules/`, chargé par wildcard en production.

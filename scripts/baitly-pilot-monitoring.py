@@ -123,6 +123,18 @@ def validate(prometheus):
     print("16 pilot rules loaded and healthy; backend scrape and snapshot fresh")
 
 
+def notification_count(state, since):
+    if state not in ("firing", "resolved") or type(since) is not int or since < 0:
+        raise RuntimeError("Unexpected notification state")
+    # Fixed aggregate SELECT only: no recipient, tenant ID or message is returned.
+    sql = ("SELECT count(*) FROM notifications WHERE notification_key='OPS_ALERT' "
+           "AND title='[" + state + "] MonitoringAlert' "
+           f"AND created_at >= to_timestamp({since})")
+    count = command("docker", "exec", "clenzy-postgres-prod", "sh", "-c",
+                    'exec psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "$1"', "sh", sql)
+    return int(count.strip())
+
+
 def canary(prometheus, alertmanager):
     # Staging-only fixture. No business action and no real outage.
     source = pathlib.Path(".env").read_text()
@@ -132,6 +144,8 @@ def canary(prometheus, alertmanager):
         raise RuntimeError("Canary is restricted to the staging domain")
     expr = lambda state: 'sum(baitly_ops_alerts_received_total{source="alertmanager",status="' + state + '"}) or vector(0)'
     baseline = {s: query(prometheus, expr(s)) for s in ("firing", "resolved")}
+    since = int(time.time()) - 1
+    persisted = {s: notification_count(s, since) for s in ("firing", "resolved")}
     now = dt.datetime.now(dt.timezone.utc)
     stamp = lambda value: value.isoformat().replace("+00:00", "Z")
     alert = {"labels": {"alertname": "BaitlyPilotCanary_" + str(time.time_ns()), "severity": "info", "job": "baitly-pilot-recipe"},
@@ -139,13 +153,15 @@ def canary(prometheus, alertmanager):
              "startsAt": stamp(now), "endsAt": stamp(now + dt.timedelta(minutes=10))}
     try:
         request(alertmanager, "/api/v2/alerts", [alert])
-        wait_for(lambda: query(prometheus, expr("firing")) > baseline["firing"], 120)
-        print("Synthetic firing batch accepted by backend notification service")
+        wait_for(lambda: query(prometheus, expr("firing")) > baseline["firing"]
+                 and notification_count("firing", since) > persisted["firing"], 120)
+        print("Synthetic firing batch accepted and staff notification persisted")
     finally:
         alert["endsAt"] = stamp(dt.datetime.now(dt.timezone.utc))
         request(alertmanager, "/api/v2/alerts", [alert])
-    wait_for(lambda: query(prometheus, expr("resolved")) > baseline["resolved"], 360)
-    print("Synthetic resolved batch accepted; this is not proof of an email being read")
+    wait_for(lambda: query(prometheus, expr("resolved")) > baseline["resolved"]
+             and notification_count("resolved", since) > persisted["resolved"], 360)
+    print("Synthetic resolved batch persisted; this is not proof of an email being read")
 
 
 def main():
