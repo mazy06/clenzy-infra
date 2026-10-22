@@ -2,8 +2,9 @@
 
 ## État au 22 octobre 2026
 
-Configuration préparée et vérifiée localement, non déployée. Les quatre alertes
-historiques sont conservées et douze règles pilote sont ajoutées. Aucun secret,
+Les quatre alertes historiques sont conservées et douze règles pilote sont ajoutées.
+Les validations locales figurent ci-dessous ; les preuves de livraison et de recette
+distante doivent être rattachées aux runs CI/CD et aux SHA livrés. Aucun secret,
 cookie, identifiant client ou contenu métier ne figure dans les fixtures.
 
 Le moniteur Sentry staging est actif :
@@ -54,7 +55,7 @@ ni secret n’est envoyé. Le rétablissement est envoyé même en cas d’éche
 le canari expire automatiquement après 10 minutes comme filet de sécurité.
 La recette exige également une augmentation du nombre de notifications OPS_ALERT
 correspondantes enregistrées en base, via un SELECT agrégé sans destinataire ni
-contenu retourné. Elle ne prouve pas la lecture par le destinataire. La répétition
+contenu retourné. Elle ne prouve pas la lecture par le destinataire. Le rétablissement
 peut prendre cinq minutes avant le resolved.
 
 ## Seuils de départ à calibrer pendant le pilote
@@ -123,8 +124,8 @@ même après un échec de recette.
 Une absence de métriques backend interdit le chargement des nouvelles règles.
 Les fixtures restent hors du répertoire `rules/`, chargé par wildcard en production.
 
-Ne pas clôturer FR11 sur la seule base de ces tests : il reste le déploiement,
-la notification réelle de la chaîne Prometheus/Alertmanager, la calibration
-pilote et les volets gouvernance, accès support et parcours métier. Les alertes
+Ne pas clôturer FR11 sur la seule base de ces tests : la validation exige une
+livraison et une notification réelle de la chaîne Prometheus/Alertmanager,
+la calibration pilote et les volets gouvernance, accès support et parcours métier. Les alertes
 ne couvrent pas à elles seules sauvegardes/restauration, IoT, paiement bancaire,
 ni tous les traitements spécifiques Channex.
