@@ -226,6 +226,10 @@ jobs:
           DEPLOY_STORAGE_ACCESS_KEY: ${{ secrets.STORAGE_OBJECT_ACCESS_KEY }}
           DEPLOY_STORAGE_SECRET_KEY: ${{ secrets.STORAGE_OBJECT_SECRET_KEY }}
           DEPLOY_STORAGE_BUCKET: ${{ vars.STORAGE_OBJECT_BUCKET }}
+          # Public ingestion key, scoped to the historical staging GitHub environment.
+          DEPLOY_POSTHOG_KEY: ${{ vars.VITE_POSTHOG_KEY }}
+          DEPLOY_SENTRY_WEB_DSN: ${{ vars.VITE_SENTRY_DSN }}
+          DEPLOY_SENTRY_API_DSN: ${{ vars.SENTRY_DSN }}
         run: |
           set -euo pipefail
 
@@ -238,7 +242,7 @@ jobs:
           # n'apparaissent donc jamais sur la ligne de commande distante (ps) ni
           # dans le journal du runner.
           {
-            for v in DEPLOY_EXPECTED_DOMAIN DEPLOY_APP_REF DEPLOY_IMAGE_TAG DEPLOY_INFRA_SHA DEPLOY_INFRA_DIR DEPLOY_REPO DEPLOY_GHCR_OWNER DEPLOY_GHCR_TOKEN DEPLOY_GIT_TOKEN DEPLOY_APP_GIT_TOKEN DEPLOY_ENV_B64 DEPLOY_CHANNEX_API_KEY DEPLOY_FORCE_ENV DEPLOY_MODE DEPLOY_SERVICES DEPLOY_FORCE_RECREATE DEPLOY_STORAGE_ACCESS_KEY DEPLOY_STORAGE_SECRET_KEY DEPLOY_STORAGE_BUCKET; do
+            for v in DEPLOY_EXPECTED_DOMAIN DEPLOY_APP_REF DEPLOY_IMAGE_TAG DEPLOY_INFRA_SHA DEPLOY_INFRA_DIR DEPLOY_REPO DEPLOY_GHCR_OWNER DEPLOY_GHCR_TOKEN DEPLOY_GIT_TOKEN DEPLOY_APP_GIT_TOKEN DEPLOY_ENV_B64 DEPLOY_CHANNEX_API_KEY DEPLOY_FORCE_ENV DEPLOY_MODE DEPLOY_SERVICES DEPLOY_FORCE_RECREATE DEPLOY_STORAGE_ACCESS_KEY DEPLOY_STORAGE_SECRET_KEY DEPLOY_STORAGE_BUCKET DEPLOY_POSTHOG_KEY DEPLOY_SENTRY_WEB_DSN DEPLOY_SENTRY_API_DSN; do
               printf 'export %s=%q\n' "$v" "${!v-}"
             done
             cat <<'SCRIPT_DISTANT'
@@ -306,6 +310,9 @@ jobs:
             echo "APP_DOMAIN ne correspond pas à la cible"; exit 1
           fi
           export DEPLOY_EXPECTED_DOMAIN DEPLOY_APP_REF DEPLOY_IMAGE_TAG
+
+          # Explicit staging destination; no change to production or SDK consent gates.
+          bash scripts/baitly-staging-telemetry.sh
 
           # Authenticate against the instance-specific Channex API before changing services.
           python3 scripts/baitly-channex-config.py .env "$DEPLOY_EXPECTED_DOMAIN"
