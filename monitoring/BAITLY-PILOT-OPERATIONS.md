@@ -35,6 +35,23 @@ explicite obtenu pour ce moniteur. Aucune sonde de production n’est ajoutée i
 5. Promouvoir par le circuit PR/CI/CD après validation staging. Aucun changement
    manuel d’état, SQL ou redémarrage de conteneur n’est prescrit par ce guide.
 
+Le CD valide les configurations, envoie seulement SIGHUP aux deux processus de
+monitoring puis vérifie les timestamps de relecture et les heures de démarrage
+inchangées. Cette opération est une relecture à chaud, sans stop/restart/recreate.
+Références officielles : [Prometheus](https://prometheus.io/docs/prometheus/latest/management_api/)
+et [Alertmanager](https://prometheus.io/docs/alerting/latest/configuration/).
+
+Après le CD, lancer `Baitly pilot staging qualification` sur `main` avec le SHA
+backend livré. Le workflow vérifie les deux versions, les agrégats, les règles
+chargées et les notifications synthétiques firing/resolved. Il refuse d’envoyer
+un canari si `APP_DOMAIN` n’est pas `app.clenzy.fr`. L’alerte de recette est
+`BaitlyPilotCanary_<identifiant éphémère>` : le récepteur la ramène volontairement
+au nom générique `MonitoringAlert`, avec sévérité info. Aucun identifiant client
+ni secret n’est envoyé. Le rétablissement est envoyé même en cas d’échec de test ;
+le canari expire automatiquement après 10 minutes comme filet de sécurité.
+Le compteur prouve l’acceptation par le service de notification, pas la lecture
+par le destinataire. La répétition peut prendre cinq minutes avant le resolved.
+
 ## Seuils de départ à calibrer pendant le pilote
 
 | Règle | Condition et maintien | Priorité | Première vérification |
@@ -95,6 +112,9 @@ rtk proxy amtool config routes test --config.file=monitoring/alertmanager/alertm
 La CI exécute les mêmes validations dans des conteneurs éphémères, sans accéder
 aux serveurs. Dix scénarios couvrent déclenchement, retour à la normale, métriques
 absentes/périmées, files retardées, ressources saturées et silence à faible trafic.
+Huit tests Python vérifient relecture, absence de restart, erreurs sans données
+privées, refus des IP externes, refus du canari en production et rétablissement
+même après un échec de recette.
 Les fixtures restent hors du répertoire `rules/`, chargé par wildcard en production.
 
 Ne pas clôturer FR11 sur la seule base de ces tests : il reste le déploiement,

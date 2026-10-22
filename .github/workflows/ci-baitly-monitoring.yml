@@ -1,10 +1,10 @@
 name: CI Baitly monitoring (no deployment)
 on:
   pull_request:
-    paths: ['monitoring/prometheus/**', 'monitoring/alertmanager/**', '.github/workflows/ci-baitly-monitoring.yml']
+    paths: ['monitoring/prometheus/**', 'monitoring/alertmanager/**', 'scripts/baitly-pilot-monitoring.py', 'scripts/tests/test_baitly_pilot_monitoring.py', 'scripts/deploy.sh', '.github/workflows/ci-baitly-monitoring.yml', '.github/workflows/baitly-pilot-staging.yml']
   push:
     branches: [main]
-    paths: ['monitoring/prometheus/**', 'monitoring/alertmanager/**', '.github/workflows/ci-baitly-monitoring.yml']
+    paths: ['monitoring/prometheus/**', 'monitoring/alertmanager/**', 'scripts/baitly-pilot-monitoring.py', 'scripts/tests/test_baitly_pilot_monitoring.py', 'scripts/deploy.sh', '.github/workflows/ci-baitly-monitoring.yml', '.github/workflows/baitly-pilot-staging.yml']
 permissions:
   contents: read
 jobs:
@@ -13,6 +13,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - name: Test reload and staging qualification safeguards
+        run: |
+          python3 -m unittest discover -s scripts/tests -p 'test_baitly_pilot_monitoring.py'
+          bash -n scripts/deploy.sh
       - name: Validate Prometheus rules and simulate incidents and recoveries
         run: |
           docker run --rm --entrypoint promtool -v "$PWD/monitoring/prometheus:/work:ro" -w /work/tests prom/prometheus:v2.51.0 check rules /work/rules/clenzy-alerts.yml

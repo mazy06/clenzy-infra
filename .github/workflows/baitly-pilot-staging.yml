@@ -1,0 +1,44 @@
+name: Baitly pilot staging qualification
+on:
+  workflow_dispatch:
+    inputs:
+      backend_sha:
+        description: 'Expected deployed backend SHA (40 hexadecimal characters)'
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: baitly-pilot-staging-qualification
+  cancel-in-progress: false
+jobs:
+  qualify:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    environment:
+      name: production
+      url: https://app.clenzy.fr
+    steps:
+      - name: Verify staging aggregates and synthetic notification recovery
+        uses: appleboy/ssh-action@v1
+        env:
+          INFRA_DIR_VALUE: ${{ vars.VPS_INFRA_DIR }}
+          EXPECTED_INFRA_SHA: ${{ github.sha }}
+          EXPECTED_BACKEND_SHA: ${{ inputs.backend_sha }}
+        with:
+          host: ${{ secrets.VPS_HOST != '' && secrets.VPS_HOST || vars.VPS_HOST }}
+          username: ${{ secrets.VPS_USER != '' && secrets.VPS_USER || vars.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          envs: INFRA_DIR_VALUE,EXPECTED_INFRA_SHA,EXPECTED_BACKEND_SHA
+          command_timeout: 10m
+          script: |
+            set -eu
+            case "$EXPECTED_BACKEND_SHA" in *[!0-9a-f]*|'') exit 1;; esac
+            [ "${#EXPECTED_BACKEND_SHA}" -eq 40 ] || exit 1
+            cd "${INFRA_DIR_VALUE:-$HOME/clenzy-infra}"
+            [ "$(git rev-parse HEAD)" = "$EXPECTED_INFRA_SHA" ] || exit 1
+            image=$(docker inspect --format '{{.Config.Image}}' clenzy-server-prod)
+            [ "${image##*:}" = "$EXPECTED_BACKEND_SHA" ] || exit 1
+            python3 scripts/baitly-pilot-monitoring.py --canary
