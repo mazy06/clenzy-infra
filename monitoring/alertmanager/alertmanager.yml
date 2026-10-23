@@ -19,7 +19,7 @@ route:
 # rather than emitting a second notification for every dependent metric.
 inhibit_rules:
   - source_matchers: ['alertname="ClenzyBackendDown"']
-    target_matchers: ['alertname=~"BaitlyOperationalMetrics(Unavailable|Stale)"']
+    target_matchers: ['alertname=~"Baitly(Operational|Recovery)Metrics(Unavailable|Stale)"']
     equal: ['job']
 
 receivers:
