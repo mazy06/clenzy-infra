@@ -1,0 +1,51 @@
+# Baitly : observations uniquement, jamais de reprise financière ou OAuth automatique.
+# Dépend du backend exposant baitly_recovery_* ; son précontrôle précède la relecture.
+groups:
+  - name: baitly-recovery
+    rules:
+      - alert: BaitlyRecoveryMetricsUnavailable
+        expr: |
+          ((baitly_recovery_snapshot_healthy{job="clenzy-backend"} == 0)
+           and on(job,instance) (up{job="clenzy-backend"} == 1))
+          or (up{job="clenzy-backend"} == 1 unless on(job,instance) baitly_recovery_snapshot_healthy{job="clenzy-backend"})
+          or (up{job="clenzy-backend"} == 1 unless on(job,instance) baitly_recovery_snapshot_last_success_timestamp_seconds{job="clenzy-backend"})
+        for: 3m
+        labels: {severity: warning}
+        annotations:
+          summary: "Collecte des journaux de reprise indisponible"
+          description: "Vérifier version backend, migrations et collecte SQL. Un ancien compteur ne prouve pas une file saine."
+
+      - alert: BaitlyRecoveryMetricsStale
+        expr: |
+          (time() - baitly_recovery_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} > 180)
+          and on(job,instance) (baitly_recovery_snapshot_healthy{job="clenzy-backend"} == 1)
+          and on(job,instance) (up{job="clenzy-backend"} == 1)
+        for: 3m
+        labels: {severity: warning}
+        annotations:
+          summary: "Journaux de reprise non rafraîchis"
+          description: "Le dernier succès de collecte dépasse trois minutes. Examiner le collecteur avant de conclure sur les exports."
+
+      - alert: BaitlyAccountingExportStalled
+        expr: |
+          (baitly_recovery_accounting_oldest_inflight_seconds{job="clenzy-backend"} > 900)
+          and on(job,instance) (baitly_recovery_snapshot_healthy{job="clenzy-backend"} == 1)
+          and on(job,instance) (time() - baitly_recovery_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} <= 180)
+          and on(job,instance) (up{job="clenzy-backend"} == 1)
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Export comptable en cours depuis trop longtemps"
+          description: "Une intention dépasse quinze minutes. Examiner le journal et la preuve distante ; ne pas réarmer un envoi."
+
+      - alert: BaitlyAccountingExportUncertain
+        expr: |
+          (baitly_recovery_accounting_unknown{job="clenzy-backend"} > 0)
+          and on(job,instance) (baitly_recovery_snapshot_healthy{job="clenzy-backend"} == 1)
+          and on(job,instance) (time() - baitly_recovery_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} <= 180)
+          and on(job,instance) (up{job="clenzy-backend"} == 1)
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Résultat d’export comptable à rapprocher"
+          description: "Un résultat non historique reste incertain. Rapprocher le bon compte et document, sans deuxième création ni effacement de preuve."
