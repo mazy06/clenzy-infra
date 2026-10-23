@@ -1,8 +1,12 @@
 # Baitly : alertes opérationnelles du pilote France
 
-## État au 22 octobre 2026
+## État des préparations au 23 octobre 2026
 
 Les quatre alertes historiques sont conservées et douze règles pilote sont ajoutées.
+Une extension de quatre règles de reprise est préparée, soit vingt règles après
+intégration. Elle dépend du backend [#495](https://github.com/mazy06/clenzy/pull/495)
+et n’est pas déclarée livrée ni qualifiée en staging. Les seuils proposés doivent
+être calibrés sur le pilote ; aucune notification réelle n’est envoyée par la CI.
 Les validations locales figurent ci-dessous ; les preuves de livraison et de recette
 distante doivent être rattachées aux runs CI/CD et aux SHA livrés. Aucun secret,
 cookie, identifiant client ou contenu métier ne figure dans les fixtures.
@@ -25,9 +29,13 @@ explicite obtenu pour ce moniteur. Aucune sonde de production n’est ajoutée i
 1. Livrer d’abord le backend qui expose `baitly_ops_*` et accepte les nouveaux noms
    de règles. Son collecteur doit atteindre `baitly_ops_snapshot_healthy = 1` et
    un timestamp de succès récent sur l’Actuator interne.
+   Pour l’extension de reprise : livrer aussi #495, avec les huit jauges
+   `baitly_recovery_*`. Chaque réplique doit les exposer ; un seul backend à jour
+   ne suffit pas à valider un déploiement partiel. L’échantillon de reprise doit
+   être sain et âgé de moins de 180 secondes, les six agrégats présents et positifs ou nuls.
 2. Intégrer et déployer ensuite ces règles infra via PR/CI/CD en staging. Sinon,
    l’absence des nouvelles métriques déclenchera légitimement une alerte.
-3. Vérifier la présence des 16 règles et l’état des cibles dans Prometheus.
+3. Vérifier la présence des 20 règles après intégration et l’état des cibles dans Prometheus.
    L’absence de trafic ne valide ni les 5xx ni la latence.
 4. Qualifier une notification synthétique `firing` puis `resolved`, avec seulement
    un nom de règle autorisé et sa sévérité : vérifier la notification staff et
@@ -75,6 +83,10 @@ peut prendre cinq minutes avant le resolved.
 | BaitlyWebhookDeliveryStalled | Plus ancienne échéance passée > 10 min, 5 min | attention | Livraisons et scheduler ; les backoffs futurs sont exclus |
 | BaitlyWebhookDisabled | Configuration FAILED, 5 min | attention | Cause des échecs avant toute réactivation |
 | BaitlyChannelSyncFailures | > 20 % et au moins 3 erreurs/10 min, 5 min | attention | Canal concerné et rapprochement des disponibilités |
+| BaitlyRecoveryMetricsUnavailable | Collecte invalide, santé ou fraîcheur absente sur cible joignable, 3 min | attention | Version backend, migrations et collecte SQL |
+| BaitlyRecoveryMetricsStale | Collecte annoncée saine mais dernier succès > 180 s, 3 min | attention | Collecteur bloqué ; ne pas traiter les anciens compteurs comme actuels |
+| BaitlyAccountingExportStalled | Intention en cours > 15 min, 5 min, échantillon sain et frais | attention | Journal et preuve distante, sans réarmer l’envoi |
+| BaitlyAccountingExportUncertain | Au moins un UNKNOWN non historique, 5 min, échantillon sain et frais | attention | Rapprochement du bon compte/document, sans seconde création |
 
 Les trois autres règles historiques couvrent échec de déploiement, ancienneté
 du dernier déploiement et génération documentaire. Une absence de déploiement
@@ -103,14 +115,27 @@ le dernier échantillon en le marquant invalide. Les retries illimités des jobs
 d’affectation restent distingués des événements réellement épuisés. Une livraison
 sans prochaine échéance utilise sa date de création pour rester détectable.
 
+Les nouvelles jauges de reprise ne contiennent ni identifiant, empreinte, montant,
+URL ni secret. Les deux SELECT sont hors du scrape, chacun borné à cinq secondes.
+Un échec conserve l’échantillon précédent mais invalide sa santé et ne renouvelle
+pas son timestamp. Les alertes comptables sont suspendues lorsque cette collecte
+est invalide/périmée ou le backend indisponible ; la cause de collecte est signalée.
+Le stock historique à revoir est compté séparément, sans alerte d’incident automatique.
+Le nombre de blocages OAuth inclut les déconnexions volontaires : il ne constitue
+pas un compteur d’erreurs et ne déclenche pas d’alerte. Aucun de ces signaux ne
+réarme un journal, ne purge une preuve ou ne relance une opération fournisseur.
+Les agrégats de journaux partagés sont affichés avec `max`, jamais additionnés
+entre répliques d’une même base. Ne pas regrouper plusieurs bases indépendantes
+sous ce contrat de qualification.
+
 ## Vérifications reproductibles, sans notification réelle
 
 Versions identiques aux services : Prometheus 2.51.0 et Alertmanager 0.27.0.
 
 ```sh
-rtk proxy promtool check rules monitoring/prometheus/rules/clenzy-alerts.yml
+rtk proxy promtool check rules monitoring/prometheus/rules/clenzy-alerts.yml monitoring/prometheus/rules/baitly-recovery.yml
 # Depuis monitoring/prometheus/tests :
-rtk proxy promtool test rules baitly-pilot.test.yml
+rtk proxy promtool test rules baitly-pilot.test.yml baitly-recovery.test.yml
 rtk proxy amtool check-config monitoring/alertmanager/alertmanager.yml
 rtk proxy amtool config routes test --config.file=monitoring/alertmanager/alertmanager.yml --verify.receivers=clenzy-inapp alertname=BaitlyOutboxExhausted severity=critical job=clenzy-backend
 ```
@@ -123,6 +148,13 @@ privées, refus des IP externes, refus du canari en production et rétablissemen
 même après un échec de recette.
 Une absence de métriques backend interdit le chargement des nouvelles règles.
 Les fixtures restent hors du répertoire `rules/`, chargé par wildcard en production.
+
+L’extension ajoute neuf scénarios Prometheus (déclenchement, rétablissement,
+collecte absente/périmée, panne backend, absence de bruit sur l’historique et les
+déconnexions, couverture de toutes les répliques) et cinq tests Python de
+précontrôle, soit dix-neuf scénarios et quinze tests Python au total. Le contrôle
+d’exposition du backend utilise le registre Prometheus réel. Ces tests ne prouvent
+pas une livraison, une réception staff ni une qualification de l’API partenaire.
 
 Ne pas clôturer FR11 sur la seule base de ces tests : la validation exige une
 livraison et une notification réelle de la chaîne Prometheus/Alertmanager,
