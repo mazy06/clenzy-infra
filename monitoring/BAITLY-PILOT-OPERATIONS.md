@@ -5,7 +5,7 @@
 Les quatre alertes historiques sont conservées et douze règles pilote sont ajoutées.
 Une extension de six règles de reprise est préparée, soit vingt-deux règles après
 intégration. Elle dépend des backends [#500](https://github.com/mazy06/clenzy/pull/500)
-et [#501](https://github.com/mazy06/clenzy/pull/501), cumulatifs sur #495
+et [#502](https://github.com/mazy06/clenzy/pull/502), cumulative sur #501/#495
 et n’est pas déclarée livrée ni qualifiée en staging. Les seuils proposés doivent
 être calibrés sur le pilote ; aucune notification réelle n’est envoyée par la CI.
 Les validations locales figurent ci-dessous ; les preuves de livraison et de recette
@@ -30,7 +30,7 @@ explicite obtenu pour ce moniteur. Aucune sonde de production n’est ajoutée i
 1. Livrer d’abord le backend qui expose `baitly_ops_*` et accepte les nouveaux noms
    de règles. Son collecteur doit atteindre `baitly_ops_snapshot_healthy = 1` et
    un timestamp de succès récent sur l’Actuator interne.
-   Pour l’extension de reprise : livrer aussi #500 puis #501, avec les treize jauges
+   Pour l’extension de reprise : livrer la candidate cumulative #502 incluant #500/#501, avec les treize jauges
    `baitly_recovery_*`. Chaque réplique doit les exposer ; un seul backend à jour
    ne suffit pas à valider un déploiement partiel. L’échantillon de reprise doit
    être sain et âgé de moins de 180 secondes, les onze agrégats présents et positifs ou nuls.
@@ -167,10 +167,12 @@ ni tous les traitements spécifiques Channex.
 
 ## Extension Minut : activation différée à la campagne finale
 
-Cette branche prolonge l’extension #135. Elle exige d’abord le journal backend #500 et le collecteur Minut [#501](https://github.com/mazy06/clenzy/pull/501). Les treize jauges baitly_recovery_* doivent être présentes sur CHAQUE réplique joignable avant activation. L’absence d’une jauge Minut, un collecteur malsain ou une fraîcheur dépassée bloque le précontrôle. Ne pas promouvoir ces règles avant ce backend. Aucune modification de serveur n’est réalisée par cette préparation.
+Cette branche prolonge l’extension #135. Elle exige d’abord le journal backend #500 et le collecteur Minut #501 et le correctif de décodage Kafka [#502](https://github.com/mazy06/clenzy/pull/502). Les treize jauges baitly_recovery_* doivent être présentes sur CHAQUE réplique joignable avant activation. L’absence d’une jauge Minut, un collecteur malsain ou une fraîcheur dépassée bloque le précontrôle. Ne pas promouvoir ces règles avant ce backend. Aucune modification de serveur n’est réalisée par cette préparation.
 
 Les cinq nouvelles jauges sont minut_ready, minut_uncertain, minut_review, minut_oldest_ready_seconds et minut_oldest_uncertain_seconds. STARTED et UNKNOWN appartiennent à l’incertitude ; REVIEW est le stock historique/retardé à examiner, pas une panne à réarmer. DONE et SUPERSEDED sont exclus. Les répliques lisent la même base : maximum des compteurs, jamais addition de copies du même journal. Aucun identifiant ni label client n’est publié.
 
 BaitlyMinutRecoveryStalled : étape READY de plus de quinze minutes, condition maintenue cinq minutes. BaitlyMinutRecoveryUncertain : tentative STARTED/UNKNOWN de plus de cinq minutes, condition maintenue cinq minutes. Seuils initiaux à calibrer pour le pilote ; aucune règle ne rejoue une notification ou automatisation. Les deux alertes sont suspendues si backend indisponible, santé fausse ou échantillon vieux. REVIEW seul ne déclenche pas ces alertes.
 
 Recette finale : vérifier 22 règles saines, 13 jauges par réplique, la fraîcheur et les deux noms acceptés par le récepteur OPS. Simuler uniquement sur données/destinataires de recette explicitement autorisés, sans panne publique ni notification implicite. Le contrôle des règles, du routage et des scénarios locaux ne vaut ni envoi réel ni validation staging. Les STARTED/UNKNOWN exigent rapprochement de preuve ; aucun SQL de réarmement ni replay générique d’automatisation.
+
+Le passage HTTP vers admission doit aussi être qualifié : le listener Minut de #502 lit la chaîne produite par JsonSerializer ; le défaut Map commun ne doit pas la rejeter avant le journal. Le consumer conserve groupe et retry/DLT. Les tests de codecs réels sont locaux/CI, pas une preuve de connectivité du broker staging.
