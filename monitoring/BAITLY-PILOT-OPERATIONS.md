@@ -5,7 +5,7 @@
 Les quatre alertes historiques sont conservées et douze règles pilote sont ajoutées.
 Une extension de neuf règles de reprise est préparée, soit vingt-cinq règles après
 intégration. Elle dépend de la candidate backend cumulative [#505](https://github.com/mazy06/clenzy/pull/505),
-SHA f47a34af5b603b7c5aab77a6ec796199f8814eb7, incluant #504/#503/#502/#501/#500/#495
+SHA a8adb8efffd2ba69c0e0cf0951b0fb424481120d, incluant #504/#503/#502/#501/#500/#495
 et n’est pas déclarée livrée ni qualifiée en staging. Les seuils proposés doivent
 être calibrés sur le pilote ; aucune notification réelle n’est envoyée par la CI.
 Les validations locales figurent ci-dessous ; les preuves de livraison et de recette
@@ -30,7 +30,7 @@ explicite obtenu pour ce moniteur. Aucune sonde de production n’est ajoutée i
 1. Livrer d’abord le backend qui expose `baitly_ops_*` et accepte les nouveaux noms
    de règles. Son collecteur doit atteindre `baitly_ops_snapshot_healthy = 1` et
    un timestamp de succès récent sur l’Actuator interne.
-   Pour l’extension de reprise : livrer la candidate cumulative #505 incluant #504/ #503/#502/#500/#501, avec les treize jauges
+   Pour l’extension de reprise : livrer la candidate cumulative #505 incluant #504/#503/#502/#500/#501, avec les treize jauges
    `baitly_recovery_*`. Chaque réplique doit les exposer ; un seul backend à jour
    ne suffit pas à valider un déploiement partiel. L’échantillon de reprise doit
    être sain et âgé de moins de 180 secondes, les onze agrégats présents et positifs ou nuls. Les cinq jauges privées
