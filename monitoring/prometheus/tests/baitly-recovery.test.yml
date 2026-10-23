@@ -175,10 +175,23 @@ tests:
       - {series: 'baitly_recovery_accounting_oldest_inflight_seconds{job="clenzy-backend",instance="b"}', values: '_ 1x1'}
       - {series: 'baitly_recovery_accounting_oldest_unknown_seconds{job="clenzy-backend",instance="b"}', values: '_ 1x1'}
       - {series: 'baitly_recovery_oauth_blocked_scopes{job="clenzy-backend",instance="b"}', values: '_ 1x1'}
+      - {series: 'baitly_recovery_minut_ready{job="clenzy-backend",instance="a"}', values: '1x2'}
+      - {series: 'baitly_recovery_minut_uncertain{job="clenzy-backend",instance="a"}', values: '1x2'}
+      - {series: 'baitly_recovery_minut_review{job="clenzy-backend",instance="a"}', values: '1x2'}
+      - {series: 'baitly_recovery_minut_oldest_ready_seconds{job="clenzy-backend",instance="a"}', values: '1x2'}
+      - {series: 'baitly_recovery_minut_oldest_uncertain_seconds{job="clenzy-backend",instance="a"}', values: '1x2'}
+      - {series: 'baitly_recovery_minut_ready{job="clenzy-backend",instance="b"}', values: '_ _ 1'}
+      - {series: 'baitly_recovery_minut_uncertain{job="clenzy-backend",instance="b"}', values: '_ _ 1'}
+      - {series: 'baitly_recovery_minut_review{job="clenzy-backend",instance="b"}', values: '_ _ 1'}
+      - {series: 'baitly_recovery_minut_oldest_ready_seconds{job="clenzy-backend",instance="b"}', values: '_ _ 1'}
+      - {series: 'baitly_recovery_minut_oldest_uncertain_seconds{job="clenzy-backend",instance="b"}', values: '_ _ 1'}
     promql_expr_test:
-      - expr: 'count((up{job="clenzy-backend"} == 1) unless on(job,instance) (count by(job,instance) ({job="clenzy-backend",__name__=~"baitly_recovery_(snapshot_healthy|snapshot_last_success_timestamp_seconds|accounting_inflight|accounting_unknown|accounting_historical_review|accounting_oldest_inflight_seconds|accounting_oldest_unknown_seconds|oauth_blocked_scopes)"}) == 8)) or vector(0)'
+      - expr: 'count((up{job="clenzy-backend"} == 1) unless on(job,instance) (count by(job,instance) ({job="clenzy-backend",__name__=~"baitly_recovery_(snapshot_healthy|snapshot_last_success_timestamp_seconds|accounting_inflight|accounting_unknown|accounting_historical_review|accounting_oldest_inflight_seconds|accounting_oldest_unknown_seconds|oauth_blocked_scopes|minut_ready|minut_uncertain|minut_review|minut_oldest_ready_seconds|minut_oldest_uncertain_seconds)"}) == 13)) or vector(0)'
         eval_time: 0m
         exp_samples: [{labels: '{}', value: 1}]
-      - expr: 'count((up{job="clenzy-backend"} == 1) unless on(job,instance) (count by(job,instance) ({job="clenzy-backend",__name__=~"baitly_recovery_(snapshot_healthy|snapshot_last_success_timestamp_seconds|accounting_inflight|accounting_unknown|accounting_historical_review|accounting_oldest_inflight_seconds|accounting_oldest_unknown_seconds|oauth_blocked_scopes)"}) == 8)) or vector(0)'
-        eval_time: 1m
+      - expr: 'count((up{job="clenzy-backend"} == 1) unless on(job,instance) (count by(job,instance) ({job="clenzy-backend",__name__=~"baitly_recovery_(snapshot_healthy|snapshot_last_success_timestamp_seconds|accounting_inflight|accounting_unknown|accounting_historical_review|accounting_oldest_inflight_seconds|accounting_oldest_unknown_seconds|oauth_blocked_scopes|minut_ready|minut_uncertain|minut_review|minut_oldest_ready_seconds|minut_oldest_uncertain_seconds)"}) == 13)) or vector(0)'
+        eval_time: 2m
         exp_samples: [{labels: '{}', value: 0}]
+      - expr: 'count((up{job="clenzy-backend"} == 1) unless on(job,instance) (count by(job,instance) ({job="clenzy-backend",__name__=~"baitly_recovery_(snapshot_healthy|snapshot_last_success_timestamp_seconds|accounting_inflight|accounting_unknown|accounting_historical_review|accounting_oldest_inflight_seconds|accounting_oldest_unknown_seconds|oauth_blocked_scopes|minut_ready|minut_uncertain|minut_review|minut_oldest_ready_seconds|minut_oldest_uncertain_seconds)"}) == 13)) or vector(0)'
+        eval_time: 1m
+        exp_samples: [{labels: '{}', value: 1}]

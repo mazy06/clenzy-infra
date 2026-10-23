@@ -139,6 +139,28 @@ class PilotTests(unittest.TestCase):
             pilot.validate_backend("private")
             self.assertIn(pilot.RECOVERY_COVERAGE,[call.args[1] for call in query.call_args_list])
 
+    def test_missing_minut_gauge_prevents_activation_with_other_journals_healthy(self):
+        def sample(base, expr):
+            if expr == pilot.RECOVERY_COVERAGE:
+                return 0
+            if 'baitly_recovery_minut_' in expr:
+                raise RuntimeError('Minut snapshot missing')
+            return 1
+        with patch('sys.argv', ['pilot', '--reload']), patch.object(pilot, 'endpoint', return_value='private'), \
+             patch.object(pilot, 'query', side_effect=sample), \
+             patch.object(pilot, 'wait_for', side_effect=lambda check: check()), \
+             patch.object(pilot, 'reload_configuration') as reload:
+            with self.assertRaisesRegex(RuntimeError, 'Minut snapshot missing'):
+                pilot.main()
+            reload.assert_not_called()
+
+    def test_minut_coverage_and_rules_are_required_without_customer_labels(self):
+        self.assertEqual(len(pilot.RECOVERY_REQUIRED), 13)
+        self.assertTrue({'BaitlyMinutRecoveryStalled', 'BaitlyMinutRecoveryUncertain'}.issubset(pilot.RULES))
+        for name in ('minut_ready', 'minut_uncertain', 'minut_review', 'minut_oldest_ready_seconds', 'minut_oldest_uncertain_seconds'):
+            self.assertIn(name, pilot.RECOVERY_METRICS)
+            self.assertIn(name, pilot.RECOVERY_COVERAGE)
+
 
 if __name__ == "__main__":
     unittest.main()

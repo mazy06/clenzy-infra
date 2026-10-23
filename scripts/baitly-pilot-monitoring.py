@@ -19,11 +19,13 @@ RULES = {
     "BaitlyWebhookDeliveryStalled", "BaitlyWebhookDisabled", "BaitlyChannelSyncFailures",
     "BaitlyRecoveryMetricsUnavailable", "BaitlyRecoveryMetricsStale",
     "BaitlyAccountingExportStalled", "BaitlyAccountingExportUncertain",
+    "BaitlyMinutRecoveryStalled", "BaitlyMinutRecoveryUncertain",
 }
 
 RECOVERY_METRICS = (
     "accounting_inflight", "accounting_unknown", "accounting_historical_review",
     "accounting_oldest_inflight_seconds", "accounting_oldest_unknown_seconds", "oauth_blocked_scopes",
+    "minut_ready", "minut_uncertain", "minut_review", "minut_oldest_ready_seconds", "minut_oldest_uncertain_seconds",
 )
 RECOVERY_REQUIRED = ("snapshot_healthy", "snapshot_last_success_timestamp_seconds", *RECOVERY_METRICS)
 RECOVERY_COVERAGE = (

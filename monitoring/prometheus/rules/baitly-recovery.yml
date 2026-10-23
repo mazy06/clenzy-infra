@@ -1,4 +1,4 @@
-# Baitly : observations uniquement, jamais de reprise financière ou OAuth automatique.
+# Baitly : observations uniquement, jamais de réarmement financier, OAuth ou Minut.
 # Dépend du backend exposant baitly_recovery_* ; son précontrôle précède la relecture.
 groups:
   - name: baitly-recovery
@@ -49,3 +49,29 @@ groups:
         annotations:
           summary: "Résultat d’export comptable à rapprocher"
           description: "Un résultat non historique reste incertain. Rapprocher le bon compte et document, sans deuxième création ni effacement de preuve."
+
+      - alert: BaitlyMinutRecoveryStalled
+        expr: |
+          (baitly_recovery_minut_oldest_ready_seconds{job="clenzy-backend"} > 900)
+          and on(job,instance) (baitly_recovery_minut_ready{job="clenzy-backend"} > 0)
+          and on(job,instance) (baitly_recovery_snapshot_healthy{job="clenzy-backend"} == 1)
+          and on(job,instance) (time() - baitly_recovery_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} <= 180)
+          and on(job,instance) (up{job="clenzy-backend"} == 1)
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Travail Minut en attente depuis trop longtemps"
+          description: "Une etape jamais tentee attend plus de quinze minutes. Examiner le worker et le journal sans rejouer une etape confirmee."
+
+      - alert: BaitlyMinutRecoveryUncertain
+        expr: |
+          (baitly_recovery_minut_oldest_uncertain_seconds{job="clenzy-backend"} > 300)
+          and on(job,instance) (baitly_recovery_minut_uncertain{job="clenzy-backend"} > 0)
+          and on(job,instance) (baitly_recovery_snapshot_healthy{job="clenzy-backend"} == 1)
+          and on(job,instance) (time() - baitly_recovery_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} <= 180)
+          and on(job,instance) (up{job="clenzy-backend"} == 1)
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Resultat Minut a rapprocher"
+          description: "Une tentative reste non confirmee depuis plus de cinq minutes. Rapprocher sa preuve sans rearmement ni nouvel envoi automatique."

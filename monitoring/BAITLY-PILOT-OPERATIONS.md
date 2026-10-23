@@ -3,8 +3,9 @@
 ## État des préparations au 23 octobre 2026
 
 Les quatre alertes historiques sont conservées et douze règles pilote sont ajoutées.
-Une extension de quatre règles de reprise est préparée, soit vingt règles après
-intégration. Elle dépend du backend [#495](https://github.com/mazy06/clenzy/pull/495)
+Une extension de six règles de reprise est préparée, soit vingt-deux règles après
+intégration. Elle dépend des backends [#500](https://github.com/mazy06/clenzy/pull/500)
+et [#501](https://github.com/mazy06/clenzy/pull/501), cumulatifs sur #495
 et n’est pas déclarée livrée ni qualifiée en staging. Les seuils proposés doivent
 être calibrés sur le pilote ; aucune notification réelle n’est envoyée par la CI.
 Les validations locales figurent ci-dessous ; les preuves de livraison et de recette
@@ -29,13 +30,13 @@ explicite obtenu pour ce moniteur. Aucune sonde de production n’est ajoutée i
 1. Livrer d’abord le backend qui expose `baitly_ops_*` et accepte les nouveaux noms
    de règles. Son collecteur doit atteindre `baitly_ops_snapshot_healthy = 1` et
    un timestamp de succès récent sur l’Actuator interne.
-   Pour l’extension de reprise : livrer aussi #495, avec les huit jauges
+   Pour l’extension de reprise : livrer aussi #500 puis #501, avec les treize jauges
    `baitly_recovery_*`. Chaque réplique doit les exposer ; un seul backend à jour
    ne suffit pas à valider un déploiement partiel. L’échantillon de reprise doit
-   être sain et âgé de moins de 180 secondes, les six agrégats présents et positifs ou nuls.
+   être sain et âgé de moins de 180 secondes, les onze agrégats présents et positifs ou nuls.
 2. Intégrer et déployer ensuite ces règles infra via PR/CI/CD en staging. Sinon,
    l’absence des nouvelles métriques déclenchera légitimement une alerte.
-3. Vérifier la présence des 20 règles après intégration et l’état des cibles dans Prometheus.
+3. Vérifier la présence des 22 règles après intégration et l’état des cibles dans Prometheus.
    L’absence de trafic ne valide ni les 5xx ni la latence.
 4. Qualifier une notification synthétique `firing` puis `resolved`, avec seulement
    un nom de règle autorisé et sa sévérité : vérifier la notification staff et
@@ -87,6 +88,8 @@ peut prendre cinq minutes avant le resolved.
 | BaitlyRecoveryMetricsStale | Collecte annoncée saine mais dernier succès > 180 s, 3 min | attention | Collecteur bloqué ; ne pas traiter les anciens compteurs comme actuels |
 | BaitlyAccountingExportStalled | Intention en cours > 15 min, 5 min, échantillon sain et frais | attention | Journal et preuve distante, sans réarmer l’envoi |
 | BaitlyAccountingExportUncertain | Au moins un UNKNOWN non historique, 5 min, échantillon sain et frais | attention | Rapprochement du bon compte/document, sans seconde création |
+| BaitlyMinutRecoveryStalled | READY > 15 min, condition 5 min | attention | Worker et progression ; aucune étape confirmée à rejouer |
+| BaitlyMinutRecoveryUncertain | STARTED/UNKNOWN > 5 min, condition 5 min | attention | Rapprocher la preuve ; ne pas réarmer ni effacer l’intention |
 
 Les trois autres règles historiques couvrent échec de déploiement, ancienneté
 du dernier déploiement et génération documentaire. Une absence de déploiement
@@ -135,7 +138,7 @@ Versions identiques aux services : Prometheus 2.51.0 et Alertmanager 0.27.0.
 ```sh
 rtk proxy promtool check rules monitoring/prometheus/rules/clenzy-alerts.yml monitoring/prometheus/rules/baitly-recovery.yml
 # Depuis monitoring/prometheus/tests :
-rtk proxy promtool test rules baitly-pilot.test.yml baitly-recovery.test.yml
+rtk proxy promtool test rules baitly-pilot.test.yml baitly-recovery.test.yml baitly-minut.test.yml
 rtk proxy amtool check-config monitoring/alertmanager/alertmanager.yml
 rtk proxy amtool config routes test --config.file=monitoring/alertmanager/alertmanager.yml --verify.receivers=clenzy-inapp alertname=BaitlyOutboxExhausted severity=critical job=clenzy-backend
 ```
@@ -161,3 +164,13 @@ livraison et une notification réelle de la chaîne Prometheus/Alertmanager,
 la calibration pilote et les volets gouvernance, accès support et parcours métier. Les alertes
 ne couvrent pas à elles seules sauvegardes/restauration, IoT, paiement bancaire,
 ni tous les traitements spécifiques Channex.
+
+## Extension Minut : activation différée à la campagne finale
+
+Cette branche prolonge l’extension #135. Elle exige d’abord le journal backend #500 et le collecteur Minut [#501](https://github.com/mazy06/clenzy/pull/501). Les treize jauges baitly_recovery_* doivent être présentes sur CHAQUE réplique joignable avant activation. L’absence d’une jauge Minut, un collecteur malsain ou une fraîcheur dépassée bloque le précontrôle. Ne pas promouvoir ces règles avant ce backend. Aucune modification de serveur n’est réalisée par cette préparation.
+
+Les cinq nouvelles jauges sont minut_ready, minut_uncertain, minut_review, minut_oldest_ready_seconds et minut_oldest_uncertain_seconds. STARTED et UNKNOWN appartiennent à l’incertitude ; REVIEW est le stock historique/retardé à examiner, pas une panne à réarmer. DONE et SUPERSEDED sont exclus. Les répliques lisent la même base : maximum des compteurs, jamais addition de copies du même journal. Aucun identifiant ni label client n’est publié.
+
+BaitlyMinutRecoveryStalled : étape READY de plus de quinze minutes, condition maintenue cinq minutes. BaitlyMinutRecoveryUncertain : tentative STARTED/UNKNOWN de plus de cinq minutes, condition maintenue cinq minutes. Seuils initiaux à calibrer pour le pilote ; aucune règle ne rejoue une notification ou automatisation. Les deux alertes sont suspendues si backend indisponible, santé fausse ou échantillon vieux. REVIEW seul ne déclenche pas ces alertes.
+
+Recette finale : vérifier 22 règles saines, 13 jauges par réplique, la fraîcheur et les deux noms acceptés par le récepteur OPS. Simuler uniquement sur données/destinataires de recette explicitement autorisés, sans panne publique ni notification implicite. Le contrôle des règles, du routage et des scénarios locaux ne vaut ni envoi réel ni validation staging. Les STARTED/UNKNOWN exigent rapprochement de preuve ; aucun SQL de réarmement ni replay générique d’automatisation.
