@@ -5,7 +5,8 @@
 Les quatre alertes historiques sont conservées et douze règles pilote sont ajoutées.
 Une extension de neuf règles de reprise est préparée, soit vingt-cinq règles après
 intégration. Elle dépend de la candidate backend cumulative [#505](https://github.com/mazy06/clenzy/pull/505),
-SHA a8adb8efffd2ba69c0e0cf0951b0fb424481120d, incluant #504/#503/#502/#501/#500/#495
+incluant #504/#503/#502/#501/#500/#495 ; utiliser son SHA de tete qualifie
+avec CI applicable verte, puis rattacher ce SHA au CD et a la campagne finale.
 et n’est pas déclarée livrée ni qualifiée en staging. Les seuils proposés doivent
 être calibrés sur le pilote ; aucune notification réelle n’est envoyée par la CI.
 Les validations locales figurent ci-dessous ; les preuves de livraison et de recette
