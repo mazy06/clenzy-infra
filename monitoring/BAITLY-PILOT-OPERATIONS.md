@@ -1,11 +1,11 @@
 # Baitly : alertes opérationnelles du pilote France
 
-## État des préparations au 23 octobre 2026
+## État des préparations au 24 octobre 2026
 
 Les quatre alertes historiques sont conservées et douze règles pilote sont ajoutées.
-Une extension de six règles de reprise est préparée, soit vingt-deux règles après
-intégration. Elle dépend des backends [#500](https://github.com/mazy06/clenzy/pull/500)
-et [#502](https://github.com/mazy06/clenzy/pull/502), cumulative sur #501/#495
+Une extension de neuf règles de reprise est préparée, soit vingt-cinq règles après
+intégration. Elle dépend de la candidate backend cumulative [#504](https://github.com/mazy06/clenzy/pull/504),
+SHA 2e4d4c4bdadbd50111992566bf0e7e368d9cef6e, incluant #503/#502/#501/#500/#495
 et n’est pas déclarée livrée ni qualifiée en staging. Les seuils proposés doivent
 être calibrés sur le pilote ; aucune notification réelle n’est envoyée par la CI.
 Les validations locales figurent ci-dessous ; les preuves de livraison et de recette
@@ -30,13 +30,15 @@ explicite obtenu pour ce moniteur. Aucune sonde de production n’est ajoutée i
 1. Livrer d’abord le backend qui expose `baitly_ops_*` et accepte les nouveaux noms
    de règles. Son collecteur doit atteindre `baitly_ops_snapshot_healthy = 1` et
    un timestamp de succès récent sur l’Actuator interne.
-   Pour l’extension de reprise : livrer la candidate cumulative #502 incluant #500/#501, avec les treize jauges
+   Pour l’extension de reprise : livrer la candidate cumulative #504 incluant #503/#502/#500/#501, avec les treize jauges
    `baitly_recovery_*`. Chaque réplique doit les exposer ; un seul backend à jour
    ne suffit pas à valider un déploiement partiel. L’échantillon de reprise doit
-   être sain et âgé de moins de 180 secondes, les onze agrégats présents et positifs ou nuls.
+   être sain et âgé de moins de 180 secondes, les onze agrégats présents et positifs ou nuls. Les cinq jauges privées
+   baitly_noise_warning_* doivent aussi être présentes, saines et fraîches sur
+   chaque réplique avant activation des trois nouvelles règles.
 2. Intégrer et déployer ensuite ces règles infra via PR/CI/CD en staging. Sinon,
    l’absence des nouvelles métriques déclenchera légitimement une alerte.
-3. Vérifier la présence des 22 règles après intégration et l’état des cibles dans Prometheus.
+3. Vérifier la présence des 25 règles après intégration et l’état des cibles dans Prometheus.
    L’absence de trafic ne valide ni les 5xx ni la latence.
 4. Qualifier une notification synthétique `firing` puis `resolved`, avec seulement
    un nom de règle autorisé et sa sévérité : vérifier la notification staff et
@@ -138,7 +140,7 @@ Versions identiques aux services : Prometheus 2.51.0 et Alertmanager 0.27.0.
 ```sh
 rtk proxy promtool check rules monitoring/prometheus/rules/clenzy-alerts.yml monitoring/prometheus/rules/baitly-recovery.yml
 # Depuis monitoring/prometheus/tests :
-rtk proxy promtool test rules baitly-pilot.test.yml baitly-recovery.test.yml baitly-minut.test.yml
+rtk proxy promtool test rules baitly-pilot.test.yml baitly-recovery.test.yml baitly-minut.test.yml baitly-noise-warning.test.yml
 rtk proxy amtool check-config monitoring/alertmanager/alertmanager.yml
 rtk proxy amtool config routes test --config.file=monitoring/alertmanager/alertmanager.yml --verify.receivers=clenzy-inapp alertname=BaitlyOutboxExhausted severity=critical job=clenzy-backend
 ```
@@ -176,3 +178,35 @@ BaitlyMinutRecoveryStalled : étape READY de plus de quinze minutes, condition m
 Recette finale : vérifier 22 règles saines, 13 jauges par réplique, la fraîcheur et les deux noms acceptés par le récepteur OPS. Simuler uniquement sur données/destinataires de recette explicitement autorisés, sans panne publique ni notification implicite. Le contrôle des règles, du routage et des scénarios locaux ne vaut ni envoi réel ni validation staging. Les STARTED/UNKNOWN exigent rapprochement de preuve ; aucun SQL de réarmement ni replay générique d’automatisation.
 
 Le passage HTTP vers admission doit aussi être qualifié : le listener Minut de #502 lit la chaîne produite par JsonSerializer ; le défaut Map commun ne doit pas la rejeter avant le journal. Le consumer conserve groupe et retry/DLT. Les tests de codecs réels sont locaux/CI, pas une preuve de connectivité du broker staging.
+
+## Extension avertissements voyageurs : journal avant provider
+
+Cette candidate prolonge #136. Le nouveau backend cumulatif sur #503 doit
+etre revu et livre AVANT ces regles, avec la migration 0600 et les cinq jauges
+baitly_noise_warning_*. Le precontrole exige toutes les 13 jauges recovery et
+cinq nouvelles jauges sur CHAQUE replique joignable, ainsi que leur sante et
+fraicheur. Total apres integration : 25 regles.
+
+BaitlyNoiseWarningMetricsUnavailable : jauge manquante, sante fausse ou succes
+de collecte vieux de plus de 180 s, condition trois minutes.
+BaitlyNoiseWarningUncertain : STARTED/UNKNOWN de plus de cinq minutes, condition
+cinq minutes. BaitlyNoiseWarningRepairStalled : file de preuves acceptees a
+reparer reste non vide pendant quinze minutes. Les deux alertes metier exigent
+une collecte saine/fraiche et un backend disponible. Seuils initiaux a calibrer.
+
+Les journaux partages sont comptes une seule fois via max, jamais sum entre
+repliques. Aucun destinataire, contenu, recu ou identifiant client dans les
+metriques. Une alerte ne rearme pas l'envoi et ne libere pas une tentative.
+Le worker backend repare seulement les marqueurs locaux depuis ACCEPTED,
+jamais les tentatives inconnues ; aucun envoi provider dans ce worker.
+
+Les scenarios locaux utilisent promtool/amtool et des fixtures synthetiques.
+Aucun Docker, SIGHUP, appel Alertmanager, notification reelle ou test staging
+n'est execute par cette preparation. Campagne finale seulement apres livraison
+de la candidate applicative ; une autorisation explicite reste requise pour
+les notifications synthetiques aux destinataires du staging.
+
+Validation locale du lot au 24 octobre 2026 : 25 règles valides, 35 scénarios
+Prometheus, 20 tests Python et trois routes Alertmanager synthétiques vérifiés.
+Les outils promtool 2.51.0 et amtool 0.27.0 sont vérifiés par leurs SHA-256 officiels.
+Aucun rechargement réel, envoi de notification, conteneur ou staging exécuté.

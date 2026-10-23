@@ -20,6 +20,7 @@ RULES = {
     "BaitlyRecoveryMetricsUnavailable", "BaitlyRecoveryMetricsStale",
     "BaitlyAccountingExportStalled", "BaitlyAccountingExportUncertain",
     "BaitlyMinutRecoveryStalled", "BaitlyMinutRecoveryUncertain",
+    "BaitlyNoiseWarningMetricsUnavailable", "BaitlyNoiseWarningUncertain", "BaitlyNoiseWarningRepairStalled",
 }
 
 RECOVERY_METRICS = (
@@ -32,6 +33,14 @@ RECOVERY_COVERAGE = (
     'count((up{job="clenzy-backend"} == 1) unless on(job,instance) '
     '(count by(job,instance) ({job="clenzy-backend",__name__=~"baitly_recovery_('
     + "|".join(RECOVERY_REQUIRED) + ')"}) == ' + str(len(RECOVERY_REQUIRED)) + ')) or vector(0)'
+)
+
+NOISE_METRICS = ("uncertain", "oldest_uncertain_seconds", "repair_pending")
+NOISE_REQUIRED = ("snapshot_healthy", "snapshot_last_success_timestamp_seconds", *NOISE_METRICS)
+NOISE_COVERAGE = (
+    'count((up{job="clenzy-backend"} == 1) unless on(job,instance) '
+    '(count by(job,instance) ({job="clenzy-backend",__name__=~"baitly_noise_warning_('
+    + "|".join(NOISE_REQUIRED) + ')"}) == ' + str(len(NOISE_REQUIRED)) + ')) or vector(0)'
 )
 
 
@@ -127,7 +136,12 @@ def validate_backend(prometheus):
              and query(prometheus, 'min(baitly_recovery_snapshot_healthy{job="clenzy-backend"})') == 1
              and query(prometheus, 'max(time() - baitly_recovery_snapshot_last_success_timestamp_seconds{job="clenzy-backend"})') < 180
              and all(query(prometheus, f'min(baitly_recovery_{metric}{{job="clenzy-backend"}})') >= 0
-                     for metric in RECOVERY_METRICS))
+                     for metric in RECOVERY_METRICS)
+             and query(prometheus, NOISE_COVERAGE) == 0
+             and query(prometheus, 'min(baitly_noise_warning_snapshot_healthy{job="clenzy-backend"})') == 1
+             and query(prometheus, 'max(time() - baitly_noise_warning_snapshot_last_success_timestamp_seconds{job="clenzy-backend"})') < 180
+             and all(query(prometheus, f'min(baitly_noise_warning_{metric}{{job="clenzy-backend"}})') >= 0
+                     for metric in NOISE_METRICS))
 
 
 def validate(prometheus):
@@ -150,6 +164,11 @@ def validate(prometheus):
         if value < 0:
             raise RuntimeError("Invalid recovery aggregate")
         print(f"baitly_recovery_{metric}={value:g}")
+    for metric in NOISE_METRICS:
+        value = query(prometheus, f'max(baitly_noise_warning_{metric}{{job="clenzy-backend"}})')
+        if value < 0:
+            raise RuntimeError("Invalid noise warning aggregate")
+        print(f"baitly_noise_warning_{metric}={value:g}")
     print(f"{len(RULES)} pilot rules loaded and healthy; backend and recovery snapshots fresh")
 
 

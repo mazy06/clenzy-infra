@@ -96,7 +96,7 @@ class PilotTests(unittest.TestCase):
             reload.assert_not_called()
 
     def test_ready_backend_requires_all_recovery_aggregates_to_be_present(self):
-        with patch.object(pilot, "query", side_effect=lambda base, expr: 0 if expr == pilot.RECOVERY_COVERAGE else 1) as query, \
+        with patch.object(pilot, "query", side_effect=lambda base, expr: 0 if expr in (pilot.RECOVERY_COVERAGE,pilot.NOISE_COVERAGE) else 1) as query, \
              patch.object(pilot, "wait_for", side_effect=lambda check: self.assertTrue(check())):
             pilot.validate_backend("private")
             expressions = [call.args[1] for call in query.call_args_list]
@@ -160,6 +160,37 @@ class PilotTests(unittest.TestCase):
         for name in ('minut_ready', 'minut_uncertain', 'minut_review', 'minut_oldest_ready_seconds', 'minut_oldest_uncertain_seconds'):
             self.assertIn(name, pilot.RECOVERY_METRICS)
             self.assertIn(name, pilot.RECOVERY_COVERAGE)
+
+    def test_noise_warning_coverage_and_rules_are_required(self):
+        self.assertEqual(len(pilot.NOISE_REQUIRED),5)
+        self.assertTrue({"BaitlyNoiseWarningMetricsUnavailable","BaitlyNoiseWarningUncertain",
+                         "BaitlyNoiseWarningRepairStalled"}.issubset(pilot.RULES))
+        self.assertEqual(len(pilot.RULES),25)
+        for metric in pilot.NOISE_REQUIRED:
+            self.assertIn(metric,pilot.NOISE_COVERAGE)
+
+    def test_missing_noise_metrics_on_one_replica_prevent_reload(self):
+        def sample(base,expr):
+            if expr==pilot.RECOVERY_COVERAGE: return 0
+            if expr==pilot.NOISE_COVERAGE: raise RuntimeError("Noise coverage incomplete")
+            return 1
+        with patch("sys.argv",["pilot","--reload"]), patch.object(pilot,"endpoint",return_value="private"), \
+             patch.object(pilot,"query",side_effect=sample), patch.object(pilot,"wait_for",side_effect=lambda check: check()), \
+             patch.object(pilot,"reload_configuration") as reload:
+            with self.assertRaisesRegex(RuntimeError,"Noise coverage incomplete"):
+                pilot.main()
+            reload.assert_not_called()
+
+    def test_stale_or_negative_noise_snapshot_is_refused(self):
+        for bad in ("stale","negative"):
+            def sample(base,expr):
+                if expr in (pilot.RECOVERY_COVERAGE,pilot.NOISE_COVERAGE): return 0
+                if bad=="stale" and "time() - baitly_noise_warning_" in expr: return 181
+                if bad=="negative" and "min(baitly_noise_warning_uncertain" in expr: return -1
+                return 1
+            with patch.object(pilot,"query",side_effect=sample), \
+                 patch.object(pilot,"wait_for",side_effect=lambda check: self.assertFalse(check())):
+                pilot.validate_backend("private")
 
 
 if __name__ == "__main__":
