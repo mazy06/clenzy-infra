@@ -88,7 +88,7 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: "Collecte des avertissements indisponible"
-          description: "Verifier migration, version et collecte SQL. Un ancien compteur ne prouve pas l'absence d'avertissement incertain."
+          description: "Verifier migration, version et collecte SQL. Un ancien compteur ne prouve pas l'absence de notification incertaine."
 
       - alert: BaitlyNoiseWarningUncertain
         expr: |
@@ -100,7 +100,7 @@ groups:
         for: 5m
         labels: {severity: warning}
         annotations:
-          summary: "Avertissement voyageur a rapprocher"
+          summary: "Notification bruit a rapprocher"
           description: "Une tentative reste incertaine. Rapprocher sa preuve sans liberer l'intention ni envoyer sur un autre canal."
 
       - alert: BaitlyNoiseWarningRepairStalled

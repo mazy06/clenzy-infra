@@ -97,7 +97,7 @@
                 "severity": "warning"
               },
               "exp_annotations": {
-                "summary": "Avertissement voyageur a rapprocher",
+                "summary": "Notification bruit a rapprocher",
                 "description": "Une tentative reste incertaine. Rapprocher sa preuve sans liberer l'intention ni envoyer sur un autre canal."
               }
             }
@@ -211,7 +211,7 @@
               },
               "exp_annotations": {
                 "summary": "Collecte des avertissements indisponible",
-                "description": "Verifier migration, version et collecte SQL. Un ancien compteur ne prouve pas l'absence d'avertissement incertain."
+                "description": "Verifier migration, version et collecte SQL. Un ancien compteur ne prouve pas l'absence de notification incertaine."
               }
             }
           ]
@@ -275,7 +275,7 @@
               },
               "exp_annotations": {
                 "summary": "Collecte des avertissements indisponible",
-                "description": "Verifier migration, version et collecte SQL. Un ancien compteur ne prouve pas l'absence d'avertissement incertain."
+                "description": "Verifier migration, version et collecte SQL. Un ancien compteur ne prouve pas l'absence de notification incertaine."
               }
             }
           ]
@@ -330,7 +330,7 @@
               },
               "exp_annotations": {
                 "summary": "Collecte des avertissements indisponible",
-                "description": "Verifier migration, version et collecte SQL. Un ancien compteur ne prouve pas l'absence d'avertissement incertain."
+                "description": "Verifier migration, version et collecte SQL. Un ancien compteur ne prouve pas l'absence de notification incertaine."
               }
             }
           ]
@@ -446,7 +446,7 @@
               },
               "exp_annotations": {
                 "summary": "Collecte des avertissements indisponible",
-                "description": "Verifier migration, version et collecte SQL. Un ancien compteur ne prouve pas l'absence d'avertissement incertain."
+                "description": "Verifier migration, version et collecte SQL. Un ancien compteur ne prouve pas l'absence de notification incertaine."
               }
             }
           ]
