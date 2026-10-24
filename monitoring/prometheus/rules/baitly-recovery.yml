@@ -1,0 +1,173 @@
+# Baitly : observations uniquement, jamais de réarmement financier, OAuth ou Minut.
+# Dépend du backend exposant baitly_recovery_* ; son précontrôle précède la relecture.
+groups:
+  - name: baitly-recovery
+    rules:
+      - alert: BaitlyRecoveryMetricsUnavailable
+        expr: |
+          ((baitly_recovery_snapshot_healthy{job="clenzy-backend"} == 0)
+           and on(job,instance) (up{job="clenzy-backend"} == 1))
+          or (up{job="clenzy-backend"} == 1 unless on(job,instance) baitly_recovery_snapshot_healthy{job="clenzy-backend"})
+          or (up{job="clenzy-backend"} == 1 unless on(job,instance) baitly_recovery_snapshot_last_success_timestamp_seconds{job="clenzy-backend"})
+        for: 3m
+        labels: {severity: warning}
+        annotations:
+          summary: "Collecte des journaux de reprise indisponible"
+          description: "Vérifier version backend, migrations et collecte SQL. Un ancien compteur ne prouve pas une file saine."
+
+      - alert: BaitlyRecoveryMetricsStale
+        expr: |
+          (time() - baitly_recovery_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} > 180)
+          and on(job,instance) (baitly_recovery_snapshot_healthy{job="clenzy-backend"} == 1)
+          and on(job,instance) (up{job="clenzy-backend"} == 1)
+        for: 3m
+        labels: {severity: warning}
+        annotations:
+          summary: "Journaux de reprise non rafraîchis"
+          description: "Le dernier succès de collecte dépasse trois minutes. Examiner le collecteur avant de conclure sur les exports."
+
+      - alert: BaitlyAccountingExportStalled
+        expr: |
+          (baitly_recovery_accounting_oldest_inflight_seconds{job="clenzy-backend"} > 900)
+          and on(job,instance) (baitly_recovery_snapshot_healthy{job="clenzy-backend"} == 1)
+          and on(job,instance) (time() - baitly_recovery_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} <= 180)
+          and on(job,instance) (up{job="clenzy-backend"} == 1)
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Export comptable en cours depuis trop longtemps"
+          description: "Une intention dépasse quinze minutes. Examiner le journal et la preuve distante ; ne pas réarmer un envoi."
+
+      - alert: BaitlyAccountingExportUncertain
+        expr: |
+          (baitly_recovery_accounting_unknown{job="clenzy-backend"} > 0)
+          and on(job,instance) (baitly_recovery_snapshot_healthy{job="clenzy-backend"} == 1)
+          and on(job,instance) (time() - baitly_recovery_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} <= 180)
+          and on(job,instance) (up{job="clenzy-backend"} == 1)
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Résultat d’export comptable à rapprocher"
+          description: "Un résultat non historique reste incertain. Rapprocher le bon compte et document, sans deuxième création ni effacement de preuve."
+
+      - alert: BaitlyMinutRecoveryStalled
+        expr: |
+          (baitly_recovery_minut_oldest_ready_seconds{job="clenzy-backend"} > 900)
+          and on(job,instance) (baitly_recovery_minut_ready{job="clenzy-backend"} > 0)
+          and on(job,instance) (baitly_recovery_snapshot_healthy{job="clenzy-backend"} == 1)
+          and on(job,instance) (time() - baitly_recovery_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} <= 180)
+          and on(job,instance) (up{job="clenzy-backend"} == 1)
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Travail Minut en attente depuis trop longtemps"
+          description: "Une etape jamais tentee attend plus de quinze minutes. Examiner le worker et le journal sans rejouer une etape confirmee."
+
+      - alert: BaitlyMinutRecoveryUncertain
+        expr: |
+          (baitly_recovery_minut_oldest_uncertain_seconds{job="clenzy-backend"} > 300)
+          and on(job,instance) (baitly_recovery_minut_uncertain{job="clenzy-backend"} > 0)
+          and on(job,instance) (baitly_recovery_snapshot_healthy{job="clenzy-backend"} == 1)
+          and on(job,instance) (time() - baitly_recovery_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} <= 180)
+          and on(job,instance) (up{job="clenzy-backend"} == 1)
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Resultat Minut a rapprocher"
+          description: "Une tentative reste non confirmee depuis plus de cinq minutes. Rapprocher sa preuve sans rearmement ni nouvel envoi automatique."
+
+      - alert: BaitlyNoiseWarningMetricsUnavailable
+        expr: |
+          ((baitly_noise_warning_snapshot_healthy{job="clenzy-backend"} != 1)
+           and on(job,instance) (up{job="clenzy-backend"} == 1))
+          or ((time() - baitly_noise_warning_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} > 180)
+           and on(job,instance) (up{job="clenzy-backend"} == 1))
+          or (up{job="clenzy-backend"} == 1 unless on(job,instance)
+             (count by(job,instance) ({job="clenzy-backend",__name__=~"baitly_noise_warning_(uncertain|oldest_uncertain_seconds|repair_pending|snapshot_healthy|snapshot_last_success_timestamp_seconds)"}) == 5))
+        for: 3m
+        labels: {severity: warning}
+        annotations:
+          summary: "Collecte des avertissements indisponible"
+          description: "Verifier migration, version et collecte SQL. Un ancien compteur ne prouve pas l'absence de notification incertaine."
+
+      - alert: BaitlyNoiseWarningUncertain
+        expr: |
+          (baitly_noise_warning_uncertain{job="clenzy-backend"} > 0)
+          and on(job,instance) (baitly_noise_warning_oldest_uncertain_seconds{job="clenzy-backend"} > 300)
+          and on(job,instance) (baitly_noise_warning_snapshot_healthy{job="clenzy-backend"} == 1)
+          and on(job,instance) (time() - baitly_noise_warning_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} <= 180)
+          and on(job,instance) (up{job="clenzy-backend"} == 1)
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Notification bruit a rapprocher"
+          description: "Une tentative reste incertaine. Rapprocher sa preuve sans liberer l'intention ni envoyer sur un autre canal."
+
+      - alert: BaitlyNoiseWarningRepairStalled
+        expr: |
+          (baitly_noise_warning_repair_pending{job="clenzy-backend"} > 0)
+          and on(job,instance) (baitly_noise_warning_snapshot_healthy{job="clenzy-backend"} == 1)
+          and on(job,instance) (time() - baitly_noise_warning_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} <= 180)
+          and on(job,instance) (up{job="clenzy-backend"} == 1)
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "Suivi local des avertissements en attente"
+          description: "La file de reparation reste non vide depuis quinze minutes. Verifier les marqueurs locaux, jamais renvoyer les messages acceptes."
+
+      - alert: BaitlyAutomationMetricsUnavailable
+        expr: |
+          (up{job="clenzy-backend"} == 1) unless on(job,instance) ((count by(job,instance) (({job="clenzy-backend",__name__=~"baitly_automation_(ready|oldest_ready_seconds|uncertain|oldest_uncertain_seconds|expired|review|legacy_review|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} >= 0) and on(__name__,job,instance) ({job="clenzy-backend",__name__=~"baitly_automation_(ready|oldest_ready_seconds|uncertain|oldest_uncertain_seconds|expired|review|legacy_review|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} < +Inf)) == 9)
+          and on(job,instance) (baitly_automation_snapshot_healthy{job="clenzy-backend"} == 1)
+          and on(job,instance) (time() - baitly_automation_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} <= 180)
+          and on(job,instance) (time() - baitly_automation_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} >= -60)
+          and on(job,instance) (up{job="clenzy-backend"} == 1))
+        for: 3m
+        labels: {severity: warning}
+        annotations:
+          summary: "Collecte du moteur d’automatisation indisponible"
+          description: "Vérifier version, migration, horloge et collecte SQL. Un compteur ancien ou incomplet ne prouve pas une file saine."
+
+      - alert: BaitlyAutomationStalled
+        expr: |
+          (baitly_automation_ready{job="clenzy-backend"} > 0)
+          and on(job,instance) (baitly_automation_oldest_ready_seconds{job="clenzy-backend"} > 120)
+          and on(job,instance) ((count by(job,instance) (({job="clenzy-backend",__name__=~"baitly_automation_(ready|oldest_ready_seconds|uncertain|oldest_uncertain_seconds|expired|review|legacy_review|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} >= 0) and on(__name__,job,instance) ({job="clenzy-backend",__name__=~"baitly_automation_(ready|oldest_ready_seconds|uncertain|oldest_uncertain_seconds|expired|review|legacy_review|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} < +Inf)) == 9)
+          and on(job,instance) (baitly_automation_snapshot_healthy{job="clenzy-backend"} == 1)
+          and on(job,instance) (time() - baitly_automation_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} <= 180)
+          and on(job,instance) (time() - baitly_automation_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} >= -60)
+          and on(job,instance) (up{job="clenzy-backend"} == 1))
+        for: 3m
+        labels: {severity: warning}
+        annotations:
+          summary: "Actions d’automatisation en attente"
+          description: "Une action prête attend depuis plus de deux minutes. Examiner le worker et le journal, sans rejouer une action déjà tentée."
+
+      - alert: BaitlyAutomationUncertain
+        expr: |
+          (baitly_automation_uncertain{job="clenzy-backend"} > 0)
+          and on(job,instance) (baitly_automation_oldest_uncertain_seconds{job="clenzy-backend"} > 300)
+          and on(job,instance) ((count by(job,instance) (({job="clenzy-backend",__name__=~"baitly_automation_(ready|oldest_ready_seconds|uncertain|oldest_uncertain_seconds|expired|review|legacy_review|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} >= 0) and on(__name__,job,instance) ({job="clenzy-backend",__name__=~"baitly_automation_(ready|oldest_ready_seconds|uncertain|oldest_uncertain_seconds|expired|review|legacy_review|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} < +Inf)) == 9)
+          and on(job,instance) (baitly_automation_snapshot_healthy{job="clenzy-backend"} == 1)
+          and on(job,instance) (time() - baitly_automation_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} <= 180)
+          and on(job,instance) (time() - baitly_automation_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} >= -60)
+          and on(job,instance) (up{job="clenzy-backend"} == 1))
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Résultat d’automatisation à rapprocher"
+          description: "Une tentative reste incertaine depuis plus de cinq minutes. Rapprocher sa preuve sans libérer la réservation ni lancer un second envoi."
+
+      - alert: BaitlyAutomationReviewRequired
+        expr: |
+          (baitly_automation_expired{job="clenzy-backend"} + baitly_automation_review{job="clenzy-backend"} + baitly_automation_legacy_review{job="clenzy-backend"} > 0)
+          and on(job,instance) ((count by(job,instance) (({job="clenzy-backend",__name__=~"baitly_automation_(ready|oldest_ready_seconds|uncertain|oldest_uncertain_seconds|expired|review|legacy_review|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} >= 0) and on(__name__,job,instance) ({job="clenzy-backend",__name__=~"baitly_automation_(ready|oldest_ready_seconds|uncertain|oldest_uncertain_seconds|expired|review|legacy_review|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} < +Inf)) == 9)
+          and on(job,instance) (baitly_automation_snapshot_healthy{job="clenzy-backend"} == 1)
+          and on(job,instance) (time() - baitly_automation_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} <= 180)
+          and on(job,instance) (time() - baitly_automation_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} >= -60)
+          and on(job,instance) (up{job="clenzy-backend"} == 1))
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "Journal d’automatisation à examiner"
+          description: "Des actions expirées, en revue ou historiques nécessitent une analyse. Aucun réarmement automatique ; conserver les preuves avant toute décision."

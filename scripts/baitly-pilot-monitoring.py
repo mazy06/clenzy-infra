@@ -17,7 +17,38 @@ RULES = {
     "BaitlyJvmHeapPressure", "BaitlyBackendDiskLow", "BaitlyOperationalMetricsUnavailable",
     "BaitlyOperationalMetricsStale", "BaitlyOutboxExhausted", "BaitlyOutboxStalled",
     "BaitlyWebhookDeliveryStalled", "BaitlyWebhookDisabled", "BaitlyChannelSyncFailures",
+    "BaitlyRecoveryMetricsUnavailable", "BaitlyRecoveryMetricsStale",
+    "BaitlyAccountingExportStalled", "BaitlyAccountingExportUncertain",
+    "BaitlyMinutRecoveryStalled", "BaitlyMinutRecoveryUncertain",
+    "BaitlyNoiseWarningMetricsUnavailable", "BaitlyNoiseWarningUncertain", "BaitlyNoiseWarningRepairStalled",
+    "BaitlyAutomationMetricsUnavailable", "BaitlyAutomationStalled", "BaitlyAutomationUncertain", "BaitlyAutomationReviewRequired",
 }
+
+RECOVERY_METRICS = (
+    "accounting_inflight", "accounting_unknown", "accounting_historical_review",
+    "accounting_oldest_inflight_seconds", "accounting_oldest_unknown_seconds", "oauth_blocked_scopes",
+    "minut_ready", "minut_uncertain", "minut_review", "minut_oldest_ready_seconds", "minut_oldest_uncertain_seconds",
+)
+RECOVERY_REQUIRED = ("snapshot_healthy", "snapshot_last_success_timestamp_seconds", *RECOVERY_METRICS)
+RECOVERY_COVERAGE = (
+    'count((up{job="clenzy-backend"} == 1) unless on(job,instance) '
+    '(count by(job,instance) ({job="clenzy-backend",__name__=~"baitly_recovery_('
+    + "|".join(RECOVERY_REQUIRED) + ')"}) == ' + str(len(RECOVERY_REQUIRED)) + ')) or vector(0)'
+)
+
+NOISE_METRICS = ("uncertain", "oldest_uncertain_seconds", "repair_pending")
+NOISE_REQUIRED = ("snapshot_healthy", "snapshot_last_success_timestamp_seconds", *NOISE_METRICS)
+NOISE_COVERAGE = (
+    'count((up{job="clenzy-backend"} == 1) unless on(job,instance) '
+    '(count by(job,instance) ({job="clenzy-backend",__name__=~"baitly_noise_warning_('
+    + "|".join(NOISE_REQUIRED) + ')"}) == ' + str(len(NOISE_REQUIRED)) + ')) or vector(0)'
+)
+
+
+AUTOMATION_METRICS = ('ready', 'oldest_ready_seconds', 'uncertain', 'oldest_uncertain_seconds', 'expired', 'review', 'legacy_review')
+AUTOMATION_REQUIRED = (*AUTOMATION_METRICS, "snapshot_healthy", "snapshot_last_success_timestamp_seconds")
+AUTOMATION_VALID = '(count by(job,instance) (({job="clenzy-backend",__name__=~"baitly_automation_(ready|oldest_ready_seconds|uncertain|oldest_uncertain_seconds|expired|review|legacy_review|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} >= 0) and on(__name__,job,instance) ({job="clenzy-backend",__name__=~"baitly_automation_(ready|oldest_ready_seconds|uncertain|oldest_uncertain_seconds|expired|review|legacy_review|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} < +Inf)) == 9)\nand on(job,instance) (baitly_automation_snapshot_healthy{job="clenzy-backend"} == 1)\nand on(job,instance) (time() - baitly_automation_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} <= 180)\nand on(job,instance) (time() - baitly_automation_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} >= -60)\nand on(job,instance) (up{job="clenzy-backend"} == 1)'
+AUTOMATION_COVERAGE = 'count((up{job="clenzy-backend"} == 1) unless on(job,instance) (' + AUTOMATION_VALID + ')) or vector(0)'
 
 
 def command(*args):
@@ -91,7 +122,7 @@ def reload_configuration(prometheus, alertmanager):
     before = {name: inspect(name)["State"]["StartedAt"] for name in
               ("clenzy-prometheus-prod", "clenzy-alertmanager-prod")}
     command("docker", "exec", "clenzy-prometheus-prod", "promtool", "check", "rules",
-            "/etc/prometheus/rules/clenzy-alerts.yml")
+            "/etc/prometheus/rules/clenzy-alerts.yml", "/etc/prometheus/rules/baitly-recovery.yml")
     command("docker", "exec", "clenzy-alertmanager-prod", "amtool", "check-config",
             "/etc/alertmanager/alertmanager.yml")
     started = time.time() - 1
@@ -107,7 +138,18 @@ def reload_configuration(prometheus, alertmanager):
 def validate_backend(prometheus):
     wait_for(lambda: query(prometheus, 'min(up{job="clenzy-backend"})') == 1
              and query(prometheus, 'min(baitly_ops_snapshot_healthy{job="clenzy-backend"})') == 1
-             and query(prometheus, 'max(time() - baitly_ops_snapshot_last_success_timestamp_seconds{job="clenzy-backend"})') < 120)
+             and query(prometheus, 'max(time() - baitly_ops_snapshot_last_success_timestamp_seconds{job="clenzy-backend"})') < 120
+             and query(prometheus, RECOVERY_COVERAGE) == 0
+             and query(prometheus, 'min(baitly_recovery_snapshot_healthy{job="clenzy-backend"})') == 1
+             and query(prometheus, 'max(time() - baitly_recovery_snapshot_last_success_timestamp_seconds{job="clenzy-backend"})') < 180
+             and all(query(prometheus, f'min(baitly_recovery_{metric}{{job="clenzy-backend"}})') >= 0
+                     for metric in RECOVERY_METRICS)
+             and query(prometheus, NOISE_COVERAGE) == 0
+             and query(prometheus, 'min(baitly_noise_warning_snapshot_healthy{job="clenzy-backend"})') == 1
+             and query(prometheus, 'max(time() - baitly_noise_warning_snapshot_last_success_timestamp_seconds{job="clenzy-backend"})') < 180
+             and all(query(prometheus, f'min(baitly_noise_warning_{metric}{{job="clenzy-backend"}})') >= 0
+                     for metric in NOISE_METRICS)
+             and query(prometheus, AUTOMATION_COVERAGE) == 0)
 
 
 def validate(prometheus):
@@ -124,7 +166,23 @@ def validate(prometheus):
         if value < 0:
             raise RuntimeError("Invalid queue aggregate")
         print(f"baitly_ops_{metric}={value:g}")
-    print("16 pilot rules loaded and healthy; backend scrape and snapshot fresh")
+    # Les répliques lisent le même journal plateforme : ne pas additionner leurs compteurs.
+    for metric in RECOVERY_METRICS:
+        value = query(prometheus, f'max(baitly_recovery_{metric}{{job="clenzy-backend"}})')
+        if value < 0:
+            raise RuntimeError("Invalid recovery aggregate")
+        print(f"baitly_recovery_{metric}={value:g}")
+    for metric in NOISE_METRICS:
+        value = query(prometheus, f'max(baitly_noise_warning_{metric}{{job="clenzy-backend"}})')
+        if value < 0:
+            raise RuntimeError("Invalid noise warning aggregate")
+        print(f"baitly_noise_warning_{metric}={value:g}")
+    for metric in AUTOMATION_METRICS:
+        value = query(prometheus, f'max(baitly_automation_{metric}{{job="clenzy-backend"}})')
+        if value < 0:
+            raise RuntimeError("Invalid automation aggregate")
+        print(f"baitly_automation_{metric}={value:g}")
+    print(f"{len(RULES)} pilot rules loaded and healthy; backend and recovery snapshots fresh")
 
 
 def notification_count(state, since):
