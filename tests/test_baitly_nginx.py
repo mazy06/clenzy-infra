@@ -44,6 +44,9 @@ class ListenerPortRemapping(unittest.TestCase):
 
 class Upstream(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path.startswith('/api/baitly-proxy-transport-failure'):
+            self.connection.shutdown(socket.SHUT_RDWR)
+            return
         self.send_response(200)
         self.send_header('Content-Type', 'text/plain')
         self.send_header('X-Test-Forwarded-For', self.headers.get('X-Forwarded-For', ''))
@@ -69,7 +72,7 @@ class NginxSecurity(unittest.TestCase):
         self.addCleanup(upstream.server_close)
         self.addCleanup(upstream.shutdown)
         for source in (ROOT / 'nginx/baitly').glob('*.conf'):
-            (directory / source.name).write_text(source.read_text())
+            (directory / source.name).write_text(source.read_text().replace('/var/log/nginx/', str(directory) + '/'))
         if trusted:
             with (directory / 'cloudflare-networks.conf').open('a') as f:
                 f.write('127.0.0.1/32 1;\n')  # Test transport peer only, never production.
@@ -192,6 +195,38 @@ class NginxSecurity(unittest.TestCase):
     def test_origin_gate_allows_a_trusted_transport_peer(self):
         self.start_nginx(lockdown=True, trusted=True)
         self.assertEqual(self.request('/')[0], 200)
+
+    def test_private_requests_and_upstream_errors_only_emit_technical_fields(self):
+        self.start_nginx(trusted=True)
+        private = 'SYNTHETIC_PRIVATE_token_email_PIN'
+        headers = {'Authorization': 'Bearer ' + private, 'Cookie': 'session=' + private,
+                   'Referer': 'https://example.test/' + private, 'User-Agent': private,
+                   'CF-Ray': private, 'CF-Connecting-IP': '198.51.100.42'}
+        status, forwarded, _ = self.request('/api/documents/' + private + '?secret=' + private, headers=headers)
+        self.assertEqual(status, 200)
+        self.assertEqual(forwarded['X-Test-Forwarded-For'], '127.0.0.1')
+        self.assertEqual(self.request('/api/baitly-proxy-transport-failure/' + private + '?secret=' + private,
+                                      headers=headers)[0], 502)
+        self.assertEqual(self.request('/api/test', method='PRIVATESECRET', headers=headers)[0], 501)
+        text = self.log.read_text()
+        for value in [private, 'PRIVATESECRET', '198.51.100.42', '127.0.0.1', 'Bearer', 'example.test', 'app.baitly.test']:
+            self.assertNotIn(value, text)
+        records = [json.loads(line) for line in text.splitlines()]
+        self.assertEqual({row['status'] for row in records}, {200, 501, 502})
+        for row in records:
+            self.assertEqual(set(row), {'diagnostic', 'timestamp', 'method', 'path', 'status',
+                                        'upstream_status', 'request_time'})
+            self.assertEqual(row['diagnostic'], 'BAITLY_PROXY_ACCESS')
+            self.assertEqual(row['path'], '/api/[redacted]')
+        self.assertEqual(records[-1]['method'], 'OTHER')
+        # Native nginx errors otherwise echo the request and transport IP. No raw file is created.
+        self.assertFalse((Path(self.temp.name) / 'error.log').exists())
+
+    def test_legacy_proxy_uses_the_same_private_logging_policy(self):
+        legacy = (ROOT / 'nginx/nginx.conf').read_text()
+        self.assertIn('include /etc/nginx/baitly/proxy-logging.conf;', legacy)
+        self.assertIn('error_log /dev/null;', legacy)
+        self.assertNotIn('log_format main', legacy)
 
 
 if __name__ == '__main__':

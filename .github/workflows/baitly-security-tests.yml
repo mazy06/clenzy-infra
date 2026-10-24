@@ -1,10 +1,10 @@
 name: Baitly Security Regression
 on:
   pull_request:
-    paths: ['nginx/**', 'scripts/baitly-*', 'tests/**', 'docker-compose.prod.yml', 'keycloak/baitly-*', '.github/workflows/baitly-*', '.github/workflows/cd-deploy.yml', 'scripts/deploy.sh']
+    paths: ['nginx/**', 'monitoring/kafka/**', 'monitoring/promtail/**', 'scripts/baitly-*', 'tests/**', 'docker-compose.*.yml', 'keycloak/baitly-*', '.github/workflows/baitly-*', '.github/workflows/cd-deploy.yml', 'scripts/deploy.sh']
   push:
     branches: [main, production]
-    paths: ['nginx/**', 'scripts/baitly-*', 'tests/**', 'docker-compose.prod.yml', 'keycloak/baitly-*', '.github/workflows/baitly-*', '.github/workflows/cd-deploy.yml', 'scripts/deploy.sh']
+    paths: ['nginx/**', 'monitoring/kafka/**', 'monitoring/promtail/**', 'scripts/baitly-*', 'tests/**', 'docker-compose.*.yml', 'keycloak/baitly-*', '.github/workflows/baitly-*', '.github/workflows/cd-deploy.yml', 'scripts/deploy.sh']
 permissions:
   contents: read
 jobs:
@@ -15,6 +15,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Verify broker logging using the deployed image libraries (no container start)
+        run: |
+          docker create --name baitly-broker-log-contract confluentinc/cp-kafka:7.6.0 > /dev/null
+          trap 'docker rm baitly-broker-log-contract > /dev/null' EXIT
+          docker cp baitly-broker-log-contract:/usr/share/java/kafka /tmp/baitly-kafka-libs
+          mkdir -p /tmp/baitly-broker-contract
+          javac -cp '/tmp/baitly-kafka-libs/*' -d /tmp/baitly-broker-contract tests/BaitlyBrokerLogContract.java
+          java -cp '/tmp/baitly-kafka-libs/*:/tmp/baitly-broker-contract' BaitlyBrokerLogContract monitoring/kafka/baitly-log4j.properties
       - name: Build isolated nginx test binary
         run: |
           sudo apt-get update -qq
@@ -29,6 +41,12 @@ jobs:
         env:
           NGINX_BINARY: /tmp/nginx-1.28.0/objs/nginx
         run: python3 -B -m unittest discover -s tests -p 'test_baitly_*.py' -v
+      - name: Exercise the production Promtail privacy pipeline offline
+        run: |
+          curl --fail --silent --show-error --location https://github.com/grafana/loki/releases/download/v3.5.10/promtail-linux-amd64.zip -o /tmp/baitly-promtail.zip
+          echo 'd580128d7e97c04e42d79f6bd432e8e4e3d79378ab2048acfb84460a2c8f95a5  /tmp/baitly-promtail.zip' | sha256sum -c -
+          unzip -q /tmp/baitly-promtail.zip -d /tmp/baitly-promtail
+          python3 -B scripts/baitly-log-privacy-test.py --promtail /tmp/baitly-promtail/promtail-linux-amd64
       - name: Check deployment shell syntax
         run: |
           for script in scripts/deploy.sh scripts/baitly-deployment-images.sh scripts/baitly-security-preflight.sh keycloak/baitly-brute-force.sh; do
