@@ -141,7 +141,7 @@ Versions identiques aux services : Prometheus 2.51.0 et Alertmanager 0.27.0.
 ```sh
 rtk proxy promtool check rules monitoring/prometheus/rules/clenzy-alerts.yml monitoring/prometheus/rules/baitly-recovery.yml
 # Depuis monitoring/prometheus/tests :
-rtk proxy promtool test rules baitly-pilot.test.yml baitly-recovery.test.yml baitly-minut.test.yml baitly-noise-warning.test.yml
+rtk proxy promtool test rules baitly-pilot.test.yml baitly-recovery.test.yml baitly-minut.test.yml baitly-noise-warning.test.yml baitly-automation.test.yml
 rtk proxy amtool check-config monitoring/alertmanager/alertmanager.yml
 rtk proxy amtool config routes test --config.file=monitoring/alertmanager/alertmanager.yml --verify.receivers=clenzy-inapp alertname=BaitlyOutboxExhausted severity=critical job=clenzy-backend
 ```
@@ -229,3 +229,48 @@ La file des travaux jamais tentes expire apres quinze minutes ; ce statut SKIPPE
 ne prouve pas une livraison. Les compteurs presentes ici surveillent les effets
 incertains et reparations, pas toutes les causes d'expiration de travaux PENDING.
 Le moteur d'automatisation global conserve son cycle distinct.
+
+## Extension moteur d’automatisation : activation différée
+
+Cette candidate prolonge #138 et exige d’abord la candidate applicative cumulative
+sur #506 : migration 0603 et collecteur BaitlyAutomationMetrics. Aucun nouveau
+port public ni endpoint n’est ajouté. Les neuf jauges baitly_automation_* sont
+ready, oldest_ready_seconds, uncertain, oldest_uncertain_seconds, expired, review,
+legacy_review, snapshot_healthy et snapshot_last_success_timestamp_seconds.
+Aucun nom de règle, contenu, destinataire, diagnostic ou identifiant métier
+n’est lu/exporté. Les métriques plateforme restent sur le monitoring privé.
+
+ready exclut les travaux futurs et expirés ; uncertain conserve STARTED/UNKNOWN
+sans expiration. review et legacy_review ne sont pas des files à réarmer.
+Une lecture SQL manquante ou incohérente conserve les derniers chiffres et
+leur date, santé fausse. Les âges suivent l’heure locale TIMESTAMP du moteur,
+indépendamment du fuseau DB. Le coût SQL réel reste à mesurer lors du pilote.
+
+Le précontrôle exige les neuf valeurs finies/non négatives sur CHAQUE réplique,
+santé égale à un, succès âgé d’au plus 180 s et pas plus de 60 s dans le futur.
+Il utilise exactement le prédicat PromQL des alertes. Une seule réplique
+invalide interdit le rechargement. Affichage des journaux partagés via max,
+jamais somme entre répliques. Total : 29 règles d’alerte.
+
+- BaitlyAutomationMetricsUnavailable : collecte absente, invalide, périmée ou
+  horloge incohérente sur backend joignable, pendant trois minutes.
+- BaitlyAutomationStalled : ready positif et âge >120 s, pendant trois minutes.
+- BaitlyAutomationUncertain : tentative âgée de plus de cinq minutes, pendant
+  cinq minutes supplémentaires ; aucun rejeu.
+- BaitlyAutomationReviewRequired : stock expired/review/legacy_review non vide
+  pendant quinze minutes, y compris historique. Examen requis sans renvoi aveugle.
+
+Les trois alertes métier sont suspendues quand le snapshot de leur réplique
+est invalide ou le backend indisponible. Les messages statiques orientent vers
+worker/journal/preuve ; aucune action automatique, aucun libellé client.
+Le routage existant clenzy-inapp est contrôlé sans envoi via amtool.
+
+Ordre de campagne finale : revue/bascule sans anciens producteurs, livraison
+app cumulative, observation de toutes les répliques puis activation infra
+cumulative. #134 (sauvegardes en attente) reste exclue. Les 24 scénarios
+promtool d’automatisation couvrent déclenchement/rétablissement, valeurs
+manquantes (chacune des neuf), négatives/NaN/infinies, santé/fraîcheur/horloge,
+répliques partielles et backend arrêté. Les tests Python mockent tout réseau
+et Docker. Aucune exécution de précontrôle réel, SIGHUP, notification ou
+recette staging par ce lot. Les seuils et la livraison réelle des alertes
+restent à qualifier avec la campagne finale ; FR11 ne se clôture pas ici.

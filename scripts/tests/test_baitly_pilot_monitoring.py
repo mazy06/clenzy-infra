@@ -96,7 +96,7 @@ class PilotTests(unittest.TestCase):
             reload.assert_not_called()
 
     def test_ready_backend_requires_all_recovery_aggregates_to_be_present(self):
-        with patch.object(pilot, "query", side_effect=lambda base, expr: 0 if expr in (pilot.RECOVERY_COVERAGE,pilot.NOISE_COVERAGE) else 1) as query, \
+        with patch.object(pilot, "query", side_effect=lambda base, expr: 0 if expr in (pilot.RECOVERY_COVERAGE,pilot.NOISE_COVERAGE,pilot.AUTOMATION_COVERAGE) else 1) as query, \
              patch.object(pilot, "wait_for", side_effect=lambda check: self.assertTrue(check())):
             pilot.validate_backend("private")
             expressions = [call.args[1] for call in query.call_args_list]
@@ -128,7 +128,7 @@ class PilotTests(unittest.TestCase):
              patch.object(pilot, "query", return_value=1) as query, patch("builtins.print"):
             pilot.validate("private")
             for call in query.call_args_list:
-                if "baitly_recovery_" in call.args[1]:
+                if "baitly_recovery_" in call.args[1] or "baitly_automation_" in call.args[1]:
                     self.assertTrue(call.args[1].startswith("max("))
         self.assertTrue({"BaitlyRecoveryMetricsUnavailable", "BaitlyRecoveryMetricsStale",
                          "BaitlyAccountingExportStalled", "BaitlyAccountingExportUncertain"}.issubset(pilot.RULES))
@@ -165,7 +165,7 @@ class PilotTests(unittest.TestCase):
         self.assertEqual(len(pilot.NOISE_REQUIRED),5)
         self.assertTrue({"BaitlyNoiseWarningMetricsUnavailable","BaitlyNoiseWarningUncertain",
                          "BaitlyNoiseWarningRepairStalled"}.issubset(pilot.RULES))
-        self.assertEqual(len(pilot.RULES),25)
+        self.assertEqual(len(pilot.RULES),29)
         for metric in pilot.NOISE_REQUIRED:
             self.assertIn(metric,pilot.NOISE_COVERAGE)
 
@@ -184,13 +184,44 @@ class PilotTests(unittest.TestCase):
     def test_stale_or_negative_noise_snapshot_is_refused(self):
         for bad in ("stale","negative"):
             def sample(base,expr):
-                if expr in (pilot.RECOVERY_COVERAGE,pilot.NOISE_COVERAGE): return 0
+                if expr in (pilot.RECOVERY_COVERAGE,pilot.NOISE_COVERAGE,pilot.AUTOMATION_COVERAGE): return 0
                 if bad=="stale" and "time() - baitly_noise_warning_" in expr: return 181
                 if bad=="negative" and "min(baitly_noise_warning_uncertain" in expr: return -1
                 return 1
             with patch.object(pilot,"query",side_effect=sample), \
                  patch.object(pilot,"wait_for",side_effect=lambda check: self.assertFalse(check())):
                 pilot.validate_backend("private")
+
+    def test_automation_requires_all_nine_valid_samples_per_live_replica(self):
+        self.assertEqual(len(pilot.AUTOMATION_REQUIRED),9)
+        for metric in pilot.AUTOMATION_REQUIRED:
+            self.assertIn(metric,pilot.AUTOMATION_COVERAGE)
+        self.assertIn("count by(job,instance)",pilot.AUTOMATION_COVERAGE)
+        self.assertIn("< +Inf",pilot.AUTOMATION_COVERAGE)
+        self.assertIn(">= -60",pilot.AUTOMATION_COVERAGE)
+        self.assertIn("<= 180",pilot.AUTOMATION_COVERAGE)
+        self.assertTrue({"BaitlyAutomationMetricsUnavailable","BaitlyAutomationStalled",
+                         "BaitlyAutomationUncertain","BaitlyAutomationReviewRequired"}.issubset(pilot.RULES))
+
+    def test_invalid_automation_replica_prevents_reload_even_when_other_collectors_are_healthy(self):
+        def sample(base,expr):
+            if expr in (pilot.RECOVERY_COVERAGE,pilot.NOISE_COVERAGE): return 0
+            if expr==pilot.AUTOMATION_COVERAGE: raise RuntimeError("Automation coverage invalid")
+            return 1
+        with patch("sys.argv",["pilot","--reload"]), patch.object(pilot,"endpoint",return_value="private"), \
+             patch.object(pilot,"query",side_effect=sample), patch.object(pilot,"wait_for",side_effect=lambda check: check()), \
+             patch.object(pilot,"reload_configuration") as reload:
+            with self.assertRaisesRegex(RuntimeError,"Automation coverage invalid"):
+                pilot.main()
+            reload.assert_not_called()
+
+    def test_nonzero_invalid_automation_replica_count_is_not_ready(self):
+        def sample(base,expr):
+            if expr in (pilot.RECOVERY_COVERAGE,pilot.NOISE_COVERAGE): return 0
+            return 1
+        with patch.object(pilot,"query",side_effect=sample), \
+             patch.object(pilot,"wait_for",side_effect=lambda check: self.assertFalse(check())):
+            pilot.validate_backend("private")
 
 
 if __name__ == "__main__":
