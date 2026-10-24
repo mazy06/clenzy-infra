@@ -33,6 +33,18 @@ scrape_configs:
         regex: ''
         action: drop
     pipeline_stages:
+      # Fail closed for proxy/broker legacy output, native stderr and multiline causes.
+      # Only source-generated technical schemas can reach Loki; no regex redaction of payloads.
+      - match:
+          selector: >-
+            {service="kafka"} !~ "^\\{\"diagnostic\":\"BAITLY_BROKER\",\"level\":\"(?:TRACE|DEBUG|INFO|WARN|ERROR|FATAL)\",\"timestamp\":\"[0-9TZ:.+-]+\"\\}\\z"
+          action: drop
+          drop_counter_reason: baitly_broker_unsafe_schema
+      - match:
+          selector: >-
+            {service=~"nginx|pms-client|baitly-site|landing"} !~ "^\\{\"diagnostic\":\"BAITLY_PROXY_ACCESS\",\"timestamp\":\"[0-9T:.+-]+\",\"method\":\"(?:GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS|OTHER)\",\"path\":\"(?:/|/health|/baitly-config\\.js|/api/auth/(?:login|forgot-password|password-reset-email)|/\\[redacted\\]|/\\[sensitive-file-probe\\]|/(?:api|oidc|assets)/\\[redacted\\])\",\"status\":[1-5][0-9]{2},\"upstream_status\":\"[-0-9, :]+\",\"request_time\":[0-9]+\\.[0-9]+\\}\\z"
+          action: drop
+          drop_counter_reason: baitly_proxy_unsafe_schema
       # Parser JSON uniquement pour les logs Spring Boot (pms-server)
       - match:
           selector: '{service="pms-server"}'
@@ -46,7 +58,7 @@ scrape_configs:
             - labels:
                 level:
                 logger:
-      # Low-cardinality status only; IP, ray, host and URI never become Loki labels.
+      # Low-cardinality status only; safe body has no IP, ray, host or raw URI.
       - match:
           selector: '{service="nginx"}'
           stages:

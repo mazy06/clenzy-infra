@@ -19,8 +19,18 @@ route:
 # rather than emitting a second notification for every dependent metric.
 inhibit_rules:
   - source_matchers: ['alertname="ClenzyBackendDown"']
-    target_matchers: ['alertname=~"BaitlyOperationalMetrics(Unavailable|Stale)"']
+    target_matchers: ['alertname=~"Baitly(Operational|Recovery)Metrics(Unavailable|Stale)"']
     equal: ['job']
+
+  # One unavailable replica must not hide a broken collector on another replica.
+  - source_matchers: ['alertname="ClenzyBackendDown"']
+    target_matchers: ['alertname="BaitlyExternalEffectMetricsUnavailable"']
+    equal: ['job', 'instance']
+
+  # A partial report is a more specific incident than its generic uncertainty.
+  - source_matchers: ['alertname="BaitlyReportEffectPartial"']
+    target_matchers: ['alertname="BaitlyReportEffectUncertain"']
+    equal: ['job', 'instance']
 
 receivers:
   - name: 'clenzy-inapp'

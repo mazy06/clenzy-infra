@@ -1,7 +1,7 @@
 version: '3.8'
 
 # ===========================================
-# Clenzy - Docker Compose STAGING
+# Baitly - Docker Compose STAGING
 # ===========================================
 # Usage: docker compose -f docker-compose.staging.yml --env-file .env.staging up -d
 #
@@ -161,6 +161,7 @@ services:
     hostname: clenzy-kafka
     restart: unless-stopped
     environment:
+      KAFKA_LOG4J_OPTS: "-Dlog4j.configuration=file:/etc/kafka/baitly-log4j.properties"
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@clenzy-kafka:29093
@@ -178,6 +179,7 @@ services:
       # Générer avec : head -c 16 /dev/urandom | base64 | tr '/+' '_-' | head -c 22
       CLUSTER_ID: ${KAFKA_CLUSTER_ID}
     volumes:
+      - ./monitoring/kafka/baitly-log4j.properties:/etc/kafka/baitly-log4j.properties:ro
       - kafka-data-staging:/var/lib/kafka/data
     healthcheck:
       test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
