@@ -96,7 +96,7 @@ class PilotTests(unittest.TestCase):
             reload.assert_not_called()
 
     def test_ready_backend_requires_all_recovery_aggregates_to_be_present(self):
-        with patch.object(pilot, "query", side_effect=lambda base, expr: 0 if expr in (pilot.RECOVERY_COVERAGE,pilot.NOISE_COVERAGE,pilot.AUTOMATION_COVERAGE) else 1) as query, \
+        with patch.object(pilot, "query", side_effect=lambda base, expr: 0 if expr in (pilot.RECOVERY_COVERAGE,pilot.NOISE_COVERAGE,pilot.AUTOMATION_COVERAGE,pilot.EXTERNAL_EFFECT_COVERAGE) else 1) as query, \
              patch.object(pilot, "wait_for", side_effect=lambda check: self.assertTrue(check())):
             pilot.validate_backend("private")
             expressions = [call.args[1] for call in query.call_args_list]
@@ -165,7 +165,7 @@ class PilotTests(unittest.TestCase):
         self.assertEqual(len(pilot.NOISE_REQUIRED),5)
         self.assertTrue({"BaitlyNoiseWarningMetricsUnavailable","BaitlyNoiseWarningUncertain",
                          "BaitlyNoiseWarningRepairStalled"}.issubset(pilot.RULES))
-        self.assertEqual(len(pilot.RULES),29)
+        self.assertEqual(len(pilot.RULES),33)
         for metric in pilot.NOISE_REQUIRED:
             self.assertIn(metric,pilot.NOISE_COVERAGE)
 
@@ -184,7 +184,7 @@ class PilotTests(unittest.TestCase):
     def test_stale_or_negative_noise_snapshot_is_refused(self):
         for bad in ("stale","negative"):
             def sample(base,expr):
-                if expr in (pilot.RECOVERY_COVERAGE,pilot.NOISE_COVERAGE,pilot.AUTOMATION_COVERAGE): return 0
+                if expr in (pilot.RECOVERY_COVERAGE,pilot.NOISE_COVERAGE,pilot.AUTOMATION_COVERAGE,pilot.EXTERNAL_EFFECT_COVERAGE): return 0
                 if bad=="stale" and "time() - baitly_noise_warning_" in expr: return 181
                 if bad=="negative" and "min(baitly_noise_warning_uncertain" in expr: return -1
                 return 1
@@ -223,6 +223,47 @@ class PilotTests(unittest.TestCase):
              patch.object(pilot,"wait_for",side_effect=lambda check: self.assertFalse(check())):
             pilot.validate_backend("private")
 
+
+    def test_external_effects_require_all_nine_finite_fresh_samples_per_replica(self):
+        self.assertEqual(len(pilot.EXTERNAL_EFFECT_REQUIRED), 9)
+        for metric in pilot.EXTERNAL_EFFECT_REQUIRED:
+            self.assertIn(metric, pilot.EXTERNAL_EFFECT_COVERAGE)
+        for fragment in ("count by(job,instance)", "on(__name__,job,instance)", "< +Inf", ">= -60", "<= 180"):
+            self.assertIn(fragment, pilot.EXTERNAL_EFFECT_COVERAGE)
+        self.assertTrue({"BaitlyExternalEffectMetricsUnavailable", "BaitlyLockEffectUncertain",
+                         "BaitlyReportEffectUncertain", "BaitlyReportEffectPartial"}.issubset(pilot.RULES))
+
+    def test_external_effects_missing_snapshot_prevents_reload(self):
+        def sample(base, expr):
+            if expr == pilot.EXTERNAL_EFFECT_COVERAGE:
+                raise RuntimeError("External effect coverage invalid")
+            if expr in (pilot.RECOVERY_COVERAGE, pilot.NOISE_COVERAGE, pilot.AUTOMATION_COVERAGE):
+                return 0
+            return 1
+        with patch("sys.argv", ["pilot", "--reload"]), patch.object(pilot, "endpoint", return_value="private"), \
+             patch.object(pilot, "query", side_effect=sample), patch.object(pilot, "wait_for", side_effect=lambda check: check()), \
+             patch.object(pilot, "reload_configuration") as reload:
+            with self.assertRaisesRegex(RuntimeError, "External effect coverage invalid"):
+                pilot.main()
+            reload.assert_not_called()
+
+    def test_external_effects_one_incomplete_replica_is_not_ready(self):
+        def sample(base, expr):
+            if expr in (pilot.RECOVERY_COVERAGE, pilot.NOISE_COVERAGE, pilot.AUTOMATION_COVERAGE):
+                return 0
+            return 1
+        with patch.object(pilot, "query", side_effect=sample), \
+             patch.object(pilot, "wait_for", side_effect=lambda check: self.assertFalse(check())):
+            pilot.validate_backend("private")
+
+    def test_external_effect_summary_uses_max_without_customer_labels(self):
+        with patch.object(pilot, "validate_backend"), patch.object(pilot, "wait_for"), \
+             patch.object(pilot, "query", return_value=0) as query, patch("builtins.print"):
+            pilot.validate("private")
+        expressions = [call.args[1] for call in query.call_args_list if "baitly_external_effect_" in call.args[1]]
+        self.assertEqual(len(expressions), len(pilot.EXTERNAL_EFFECT_METRICS))
+        self.assertTrue(all(expr.startswith("max(") for expr in expressions))
+        self.assertTrue(all("organization" not in expr and "resource" not in expr for expr in expressions))
 
 if __name__ == "__main__":
     unittest.main()

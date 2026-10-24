@@ -171,3 +171,60 @@ groups:
         annotations:
           summary: "Journal d’automatisation à examiner"
           description: "Des actions expirées, en revue ou historiques nécessitent une analyse. Aucun réarmement automatique ; conserver les preuves avant toute décision."
+
+      - alert: BaitlyExternalEffectMetricsUnavailable
+        expr: |
+          (up{job="clenzy-backend"} == 1) unless on(job,instance) ((count by(job,instance) (({job="clenzy-backend",__name__=~"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} >= 0) and on(__name__,job,instance) ({job="clenzy-backend",__name__=~"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} < +Inf)) == 9)
+          and on(job,instance) (baitly_external_effect_snapshot_healthy{job="clenzy-backend"} == 1)
+          and on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} <= 180)
+          and on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} >= -60)
+          and on(job,instance) (up{job="clenzy-backend"} == 1))
+        for: 3m
+        labels: {severity: warning}
+        annotations:
+          summary: "Collecte des effets externes indisponible"
+          description: "Vérifier version, migration, horloge et collecte SQL. Un compteur ancien ou incomplet ne prouve pas une absence de blocage."
+
+      - alert: BaitlyLockEffectUncertain
+        expr: |
+          (baitly_external_effect_lock_uncertain{job="clenzy-backend"} > 0)
+          and on(job,instance) (baitly_external_effect_lock_oldest_uncertain_seconds{job="clenzy-backend"} > 300)
+          and on(job,instance) ((count by(job,instance) (({job="clenzy-backend",__name__=~"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} >= 0) and on(__name__,job,instance) ({job="clenzy-backend",__name__=~"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} < +Inf)) == 9)
+          and on(job,instance) (baitly_external_effect_snapshot_healthy{job="clenzy-backend"} == 1)
+          and on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} <= 180)
+          and on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} >= -60)
+          and on(job,instance) (up{job="clenzy-backend"} == 1))
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Commande de serrure à rapprocher"
+          description: "Une tentative reste incertaine depuis plus de cinq minutes. Conserver le blocage ; vérifier les preuves fournisseur et matérielles sans rejouer la commande."
+
+      - alert: BaitlyReportEffectUncertain
+        expr: |
+          (baitly_external_effect_report_uncertain{job="clenzy-backend"} > 0)
+          and on(job,instance) (baitly_external_effect_report_oldest_uncertain_seconds{job="clenzy-backend"} > 300)
+          and on(job,instance) ((count by(job,instance) (({job="clenzy-backend",__name__=~"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} >= 0) and on(__name__,job,instance) ({job="clenzy-backend",__name__=~"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} < +Inf)) == 9)
+          and on(job,instance) (baitly_external_effect_snapshot_healthy{job="clenzy-backend"} == 1)
+          and on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} <= 180)
+          and on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} >= -60)
+          and on(job,instance) (up{job="clenzy-backend"} == 1))
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Transmission de rapport à rapprocher"
+          description: "Une transmission reste incertaine depuis plus de cinq minutes. Conserver le journal et rapprocher les preuves sans renvoyer le rapport."
+
+      - alert: BaitlyReportEffectPartial
+        expr: |
+          (baitly_external_effect_report_partial{job="clenzy-backend"} > 0)
+          and on(job,instance) ((count by(job,instance) (({job="clenzy-backend",__name__=~"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} >= 0) and on(__name__,job,instance) ({job="clenzy-backend",__name__=~"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} < +Inf)) == 9)
+          and on(job,instance) (baitly_external_effect_snapshot_healthy{job="clenzy-backend"} == 1)
+          and on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} <= 180)
+          and on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} >= -60)
+          and on(job,instance) (up{job="clenzy-backend"} == 1))
+        for: 3m
+        labels: {severity: warning}
+        annotations:
+          summary: "Transmission de rapport partiellement confirmée"
+          description: "Au moins un envoi accepté reste dans une tentative non terminée. Examiner les preuves ; ne renvoyer ni le lot ni les destinataires restants automatiquement."

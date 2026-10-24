@@ -22,6 +22,7 @@ RULES = {
     "BaitlyMinutRecoveryStalled", "BaitlyMinutRecoveryUncertain",
     "BaitlyNoiseWarningMetricsUnavailable", "BaitlyNoiseWarningUncertain", "BaitlyNoiseWarningRepairStalled",
     "BaitlyAutomationMetricsUnavailable", "BaitlyAutomationStalled", "BaitlyAutomationUncertain", "BaitlyAutomationReviewRequired",
+    "BaitlyExternalEffectMetricsUnavailable", "BaitlyLockEffectUncertain", "BaitlyReportEffectUncertain", "BaitlyReportEffectPartial",
 }
 
 RECOVERY_METRICS = (
@@ -49,6 +50,12 @@ AUTOMATION_METRICS = ('ready', 'oldest_ready_seconds', 'uncertain', 'oldest_unce
 AUTOMATION_REQUIRED = (*AUTOMATION_METRICS, "snapshot_healthy", "snapshot_last_success_timestamp_seconds")
 AUTOMATION_VALID = '(count by(job,instance) (({job="clenzy-backend",__name__=~"baitly_automation_(ready|oldest_ready_seconds|uncertain|oldest_uncertain_seconds|expired|review|legacy_review|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} >= 0) and on(__name__,job,instance) ({job="clenzy-backend",__name__=~"baitly_automation_(ready|oldest_ready_seconds|uncertain|oldest_uncertain_seconds|expired|review|legacy_review|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} < +Inf)) == 9)\nand on(job,instance) (baitly_automation_snapshot_healthy{job="clenzy-backend"} == 1)\nand on(job,instance) (time() - baitly_automation_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} <= 180)\nand on(job,instance) (time() - baitly_automation_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} >= -60)\nand on(job,instance) (up{job="clenzy-backend"} == 1)'
 AUTOMATION_COVERAGE = 'count((up{job="clenzy-backend"} == 1) unless on(job,instance) (' + AUTOMATION_VALID + ')) or vector(0)'
+
+
+EXTERNAL_EFFECT_METRICS = ('lock_uncertain', 'lock_oldest_uncertain_seconds', 'lock_unknown', 'report_uncertain', 'report_oldest_uncertain_seconds', 'report_unknown', 'report_partial')
+EXTERNAL_EFFECT_REQUIRED = (*EXTERNAL_EFFECT_METRICS, "snapshot_healthy", "snapshot_last_success_timestamp_seconds")
+EXTERNAL_EFFECT_VALID = '(count by(job,instance) (({job="clenzy-backend",__name__=~"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} >= 0) and on(__name__,job,instance) ({job="clenzy-backend",__name__=~"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job="clenzy-backend"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} >= -60)\nand on(job,instance) (up{job="clenzy-backend"} == 1)'
+EXTERNAL_EFFECT_COVERAGE = 'count((up{job="clenzy-backend"} == 1) unless on(job,instance) ((count by(job,instance) (({job="clenzy-backend",__name__=~"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} >= 0) and on(__name__,job,instance) ({job="clenzy-backend",__name__=~"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job="clenzy-backend"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} >= -60)\nand on(job,instance) (up{job="clenzy-backend"} == 1))) or vector(0)'
 
 
 def command(*args):
@@ -149,7 +156,8 @@ def validate_backend(prometheus):
              and query(prometheus, 'max(time() - baitly_noise_warning_snapshot_last_success_timestamp_seconds{job="clenzy-backend"})') < 180
              and all(query(prometheus, f'min(baitly_noise_warning_{metric}{{job="clenzy-backend"}})') >= 0
                      for metric in NOISE_METRICS)
-             and query(prometheus, AUTOMATION_COVERAGE) == 0)
+             and query(prometheus, AUTOMATION_COVERAGE) == 0
+             and query(prometheus, EXTERNAL_EFFECT_COVERAGE) == 0)
 
 
 def validate(prometheus):
@@ -182,6 +190,11 @@ def validate(prometheus):
         if value < 0:
             raise RuntimeError("Invalid automation aggregate")
         print(f"baitly_automation_{metric}={value:g}")
+    for metric in EXTERNAL_EFFECT_METRICS:
+        value = query(prometheus, f'max(baitly_external_effect_{metric}{{job="clenzy-backend"}})')
+        if value < 0:
+            raise RuntimeError("Invalid external effect aggregate")
+        print(f"baitly_external_effect_{metric}={value:g}")
     print(f"{len(RULES)} pilot rules loaded and healthy; backend and recovery snapshots fresh")
 
 

@@ -141,7 +141,7 @@ Versions identiques aux services : Prometheus 2.51.0 et Alertmanager 0.27.0.
 ```sh
 rtk proxy promtool check rules monitoring/prometheus/rules/clenzy-alerts.yml monitoring/prometheus/rules/baitly-recovery.yml
 # Depuis monitoring/prometheus/tests :
-rtk proxy promtool test rules baitly-pilot.test.yml baitly-recovery.test.yml baitly-minut.test.yml baitly-noise-warning.test.yml baitly-automation.test.yml
+rtk proxy promtool test rules baitly-pilot.test.yml baitly-recovery.test.yml baitly-minut.test.yml baitly-noise-warning.test.yml baitly-automation.test.yml baitly-external-effects.test.yml
 rtk proxy amtool check-config monitoring/alertmanager/alertmanager.yml
 rtk proxy amtool config routes test --config.file=monitoring/alertmanager/alertmanager.yml --verify.receivers=clenzy-inapp alertname=BaitlyOutboxExhausted severity=critical job=clenzy-backend
 ```
@@ -274,3 +274,20 @@ répliques partielles et backend arrêté. Les tests Python mockent tout réseau
 et Docker. Aucune exécution de précontrôle réel, SIGHUP, notification ou
 recette staging par ce lot. Les seuils et la livraison réelle des alertes
 restent à qualifier avec la campagne finale ; FR11 ne se clôture pas ici.
+
+## Effets incertains des serrures et des rapports
+
+La candidate applicative cumulative doit exposer les neuf jauges `baitly_external_effect_*` sur toutes les répliques avant activation infra. Elle comprend la migration 0605 ; aucune migration supplémentaire pour ces métriques. Le collecteur lit le journal privé, jamais les PIN, contacts, documents ou réponses fournisseur. STARTED et UNKNOWN restent bloqués, même anciens. Les tentatives manuelles sont incluses ; aucun historique non journalisé ne devient une preuve.
+
+Jauges : `lock_uncertain`, `lock_oldest_uncertain_seconds`, `lock_unknown`, `report_uncertain`, `report_oldest_uncertain_seconds`, `report_unknown`, `report_partial`, `snapshot_healthy`, `snapshot_last_success_timestamp_seconds`. Un rapport partiel signifie au moins une acceptation SMTP enregistrée sans résultat terminal commité ; cela ne prouve pas une absence de livraison au reste du lot. Les agrégats de base partagée utilisent max et non sum. Ne pas regrouper des bases indépendantes.
+
+| Alerte | Condition et temporisation | Conduite |
+| --- | --- | --- |
+| BaitlyExternalEffectMetricsUnavailable | Neuf valeurs manquantes, non finies, négatives, santé invalide ou timestamp hors fenêtre [-60 s, 180 s], pendant 3 min | Vérifier version, migration, horloge et collecte avant toute conclusion. |
+| BaitlyLockEffectUncertain | STARTED/UNKNOWN âgé de plus de 5 min, condition maintenue 5 min | Rapprocher preuves cloud et matérielles sans relancer la commande. |
+| BaitlyReportEffectUncertain | STARTED/UNKNOWN âgé de plus de 5 min, condition maintenue 5 min | Examiner preuves SMTP et commit, sans renvoi. |
+| BaitlyReportEffectPartial | Au moins une acceptation dans une tentative non terminée, pendant 3 min | Examiner le lot sans renvoyer les acceptés ni les restants automatiquement. |
+
+Les alertes métier sont suspendues si collecte invalide/périmée ou backend indisponible. L'alerte partielle inhibe son alerte rapport générique sur la même réplique. Le récepteur interne et ses identifiants fonctionnels sont conservés. Les notifications backend ne reprennent jamais les annotations ou labels libres. Le précontrôle refuse la relecture si une seule réplique est invalide.
+
+Validation préparée : 36 nouveaux scénarios promtool couvrant déclenchement/rétablissement, neuf métriques manquantes, NaN/Inf/négatif, timestamp périmé/futur, backend arrêté et réplique incomplète ; précontrôles et routes testés sans réseau métier ni notification réelle. La recette staging finale vérifiera les vrais incidents synthétiques, leur réception autorisée, la fraîcheur de chaque réplique, le coût SQL et la conservation des blocages après redémarrage. Ne pas activer les règles avant la candidate applicative cumulative ; aucun déploiement dans cette vague. FR09 en attente et FR10/FR11 restent ouverts.
