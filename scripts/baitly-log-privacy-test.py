@@ -21,6 +21,8 @@ def verify(binary):
         'kafka': '{"diagnostic":"BAITLY_BROKER","level":"ERROR","timestamp":"2026-10-24T11:00:00.123Z"}',
         'nginx': '{"diagnostic":"BAITLY_PROXY_ACCESS","timestamp":"2026-10-24T11:00:00+00:00","method":"OTHER","path":"/api/[redacted]","status":502,"upstream_status":"502","request_time":0.001}',
     }
+    for service in ('pms-client', 'baitly-site', 'landing'):
+        safe[service] = safe['nginx']
     with tempfile.TemporaryDirectory(prefix='baitly-log-contract-') as directory:
         for service, record in safe.items():
             config = Path(directory) / (service + '.yml')
@@ -62,7 +64,7 @@ def verify(binary):
                     if process.poll() is None:
                         process.kill()
                         process.wait(timeout=5)
-    print('Baitly collector contract: 4 safe records retained, 12 unsafe records rejected; no Loki connection')
+    print('Baitly collector contract: 10 safe records retained, 30 unsafe records rejected; no Loki connection')
 
 
 if __name__ == '__main__':
