@@ -1,7 +1,7 @@
 version: '3.8'
 
 # ===========================================
-# Clenzy - Docker Compose DÉVELOPPEMENT
+# Baitly - Docker Compose DÉVELOPPEMENT
 # ===========================================
 # Usage: docker compose -f docker-compose.dev.yml --env-file .env.dev up --build
 #
@@ -452,7 +452,7 @@ services:
       - VITE_KEYCLOAK_URL=http://localhost:8086
       - VITE_KEYCLOAK_REALM=clenzy
       - VITE_KEYCLOAK_CLIENT_ID=clenzy-web
-      - VITE_APP_NAME=Clenzy
+      - VITE_APP_NAME=Baitly
       - VITE_APP_VERSION=1.0.0
       - VITE_STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}
     volumes:
@@ -474,7 +474,7 @@ services:
   # ==========================================
   # SITE MARKETING BAITLY (vitrine produit)
   # ==========================================
-  # Distinct de la landing page Clenzy historique (port 8080) : les deux
+  # Distinct de la landing page Baitly historique (port 8080) : les deux
   # coexistent, aucune n'ecrase l'autre.
   #
   # Reutilise le Dockerfile.dev ET le volume node_modules du pms-client : meme

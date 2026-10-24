@@ -1,7 +1,7 @@
 version: '3.8'
 
 # ===========================================
-# Clenzy - Docker Compose STAGING
+# Baitly - Docker Compose STAGING
 # ===========================================
 # Usage: docker compose -f docker-compose.staging.yml --env-file .env.staging up -d
 #
