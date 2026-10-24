@@ -78,12 +78,12 @@ groups:
 
       - alert: BaitlyNoiseWarningMetricsUnavailable
         expr: |
-          ((baitly_noise_warning_snapshot_healthy{job="clenzy-backend"} != 1)
-           and on(job,instance) (up{job="clenzy-backend"} == 1))
-          or ((time() - baitly_noise_warning_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} > 180)
-           and on(job,instance) (up{job="clenzy-backend"} == 1))
-          or (up{job="clenzy-backend"} == 1 unless on(job,instance)
-             (count by(job,instance) ({job="clenzy-backend",__name__=~"baitly_noise_warning_(uncertain|oldest_uncertain_seconds|repair_pending|snapshot_healthy|snapshot_last_success_timestamp_seconds)"}) == 5))
+          (up{job="clenzy-backend"} == 1) unless on(job,instance) ((count by(job,instance) (({job="clenzy-backend",__name__=~"baitly_noise_warning_(uncertain|oldest_uncertain_seconds|repair_pending|expired_unattempted|expired_unattempted_recent|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} >= 0) and on(__name__,job,instance) ({job="clenzy-backend",__name__=~"baitly_noise_warning_(uncertain|oldest_uncertain_seconds|repair_pending|expired_unattempted|expired_unattempted_recent|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} < +Inf)) == 7)
+          and on(job,instance) (baitly_noise_warning_snapshot_healthy{job="clenzy-backend"} == 1)
+          and on(job,instance) (time() - baitly_noise_warning_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} <= 180)
+          and on(job,instance) (time() - baitly_noise_warning_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} >= -60)
+          and on(job,instance) (baitly_noise_warning_expired_unattempted_recent{job="clenzy-backend"} <= baitly_noise_warning_expired_unattempted{job="clenzy-backend"})
+          and on(job,instance) (up{job="clenzy-backend"} == 1))
         for: 3m
         labels: {severity: warning}
         annotations:
@@ -94,9 +94,12 @@ groups:
         expr: |
           (baitly_noise_warning_uncertain{job="clenzy-backend"} > 0)
           and on(job,instance) (baitly_noise_warning_oldest_uncertain_seconds{job="clenzy-backend"} > 300)
+          and on(job,instance) ((count by(job,instance) (({job="clenzy-backend",__name__=~"baitly_noise_warning_(uncertain|oldest_uncertain_seconds|repair_pending|expired_unattempted|expired_unattempted_recent|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} >= 0) and on(__name__,job,instance) ({job="clenzy-backend",__name__=~"baitly_noise_warning_(uncertain|oldest_uncertain_seconds|repair_pending|expired_unattempted|expired_unattempted_recent|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} < +Inf)) == 7)
           and on(job,instance) (baitly_noise_warning_snapshot_healthy{job="clenzy-backend"} == 1)
           and on(job,instance) (time() - baitly_noise_warning_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} <= 180)
-          and on(job,instance) (up{job="clenzy-backend"} == 1)
+          and on(job,instance) (time() - baitly_noise_warning_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} >= -60)
+          and on(job,instance) (baitly_noise_warning_expired_unattempted_recent{job="clenzy-backend"} <= baitly_noise_warning_expired_unattempted{job="clenzy-backend"})
+          and on(job,instance) (up{job="clenzy-backend"} == 1))
         for: 5m
         labels: {severity: warning}
         annotations:
@@ -106,14 +109,32 @@ groups:
       - alert: BaitlyNoiseWarningRepairStalled
         expr: |
           (baitly_noise_warning_repair_pending{job="clenzy-backend"} > 0)
+          and on(job,instance) ((count by(job,instance) (({job="clenzy-backend",__name__=~"baitly_noise_warning_(uncertain|oldest_uncertain_seconds|repair_pending|expired_unattempted|expired_unattempted_recent|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} >= 0) and on(__name__,job,instance) ({job="clenzy-backend",__name__=~"baitly_noise_warning_(uncertain|oldest_uncertain_seconds|repair_pending|expired_unattempted|expired_unattempted_recent|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} < +Inf)) == 7)
           and on(job,instance) (baitly_noise_warning_snapshot_healthy{job="clenzy-backend"} == 1)
           and on(job,instance) (time() - baitly_noise_warning_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} <= 180)
-          and on(job,instance) (up{job="clenzy-backend"} == 1)
+          and on(job,instance) (time() - baitly_noise_warning_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} >= -60)
+          and on(job,instance) (baitly_noise_warning_expired_unattempted_recent{job="clenzy-backend"} <= baitly_noise_warning_expired_unattempted{job="clenzy-backend"})
+          and on(job,instance) (up{job="clenzy-backend"} == 1))
         for: 15m
         labels: {severity: warning}
         annotations:
           summary: "Suivi local des avertissements en attente"
           description: "La file de reparation reste non vide depuis quinze minutes. Verifier les marqueurs locaux, jamais renvoyer les messages acceptes."
+
+      - alert: BaitlyNoiseWarningExpiredBeforeAttempt
+        expr: |
+          (baitly_noise_warning_expired_unattempted_recent{job="clenzy-backend"} > 0)
+          and on(job,instance) ((count by(job,instance) (({job="clenzy-backend",__name__=~"baitly_noise_warning_(uncertain|oldest_uncertain_seconds|repair_pending|expired_unattempted|expired_unattempted_recent|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} >= 0) and on(__name__,job,instance) ({job="clenzy-backend",__name__=~"baitly_noise_warning_(uncertain|oldest_uncertain_seconds|repair_pending|expired_unattempted|expired_unattempted_recent|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} < +Inf)) == 7)
+          and on(job,instance) (baitly_noise_warning_snapshot_healthy{job="clenzy-backend"} == 1)
+          and on(job,instance) (time() - baitly_noise_warning_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} <= 180)
+          and on(job,instance) (time() - baitly_noise_warning_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} >= -60)
+          and on(job,instance) (baitly_noise_warning_expired_unattempted_recent{job="clenzy-backend"} <= baitly_noise_warning_expired_unattempted{job="clenzy-backend"})
+          and on(job,instance) (up{job="clenzy-backend"} == 1))
+        for: 3m
+        labels: {severity: warning}
+        annotations:
+          summary: "Notification bruit expiree avant tentative"
+          description: "Une delegation a expire dans les quinze dernieres minutes avant toute tentative observee. Verifier le worker et sa latence, sans renvoyer ni requalifier les effets incertains."
 
       - alert: BaitlyAutomationMetricsUnavailable
         expr: |

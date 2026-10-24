@@ -162,12 +162,38 @@ class PilotTests(unittest.TestCase):
             self.assertIn(name, pilot.RECOVERY_COVERAGE)
 
     def test_noise_warning_coverage_and_rules_are_required(self):
-        self.assertEqual(len(pilot.NOISE_REQUIRED),5)
+        self.assertEqual(len(pilot.NOISE_REQUIRED),7)
         self.assertTrue({"BaitlyNoiseWarningMetricsUnavailable","BaitlyNoiseWarningUncertain",
-                         "BaitlyNoiseWarningRepairStalled"}.issubset(pilot.RULES))
-        self.assertEqual(len(pilot.RULES),33)
+                         "BaitlyNoiseWarningRepairStalled","BaitlyNoiseWarningExpiredBeforeAttempt"}.issubset(pilot.RULES))
+        self.assertEqual(len(pilot.RULES),34)
         for metric in pilot.NOISE_REQUIRED:
             self.assertIn(metric,pilot.NOISE_COVERAGE)
+
+    def test_incomplete_expiry_observation_blocks_reload(self):
+        def sample(base, expr):
+            if expr == pilot.NOISE_COVERAGE:
+                return 1
+            if expr in (pilot.RECOVERY_COVERAGE, pilot.AUTOMATION_COVERAGE, pilot.EXTERNAL_EFFECT_COVERAGE):
+                return 0
+            return 1
+        def ready(check):
+            if not check():
+                raise RuntimeError("Noise expiry snapshot incomplete")
+        with patch("sys.argv", ["pilot", "--reload"]), patch.object(pilot, "endpoint", return_value="private"), \
+             patch.object(pilot, "query", side_effect=sample), patch.object(pilot, "wait_for", side_effect=ready), \
+             patch.object(pilot, "reload_configuration") as reload:
+            with self.assertRaisesRegex(RuntimeError, "Noise expiry snapshot incomplete"):
+                pilot.main()
+            reload.assert_not_called()
+
+    def test_noise_expiry_summary_is_global_and_does_not_sum_shared_replicas(self):
+        with patch.object(pilot, "validate_backend"), patch.object(pilot, "wait_for"), \
+             patch.object(pilot, "query", return_value=0) as query, patch("builtins.print"):
+            pilot.validate("private")
+        expressions = [call.args[1] for call in query.call_args_list if "baitly_noise_warning_" in call.args[1]]
+        self.assertEqual(len(expressions), len(pilot.NOISE_METRICS))
+        self.assertTrue(all(expr.startswith("max(") for expr in expressions))
+        self.assertTrue(all("organization" not in expr and "recipient" not in expr for expr in expressions))
 
     def test_missing_noise_metrics_on_one_replica_prevent_reload(self):
         def sample(base,expr):

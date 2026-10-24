@@ -20,7 +20,7 @@ RULES = {
     "BaitlyRecoveryMetricsUnavailable", "BaitlyRecoveryMetricsStale",
     "BaitlyAccountingExportStalled", "BaitlyAccountingExportUncertain",
     "BaitlyMinutRecoveryStalled", "BaitlyMinutRecoveryUncertain",
-    "BaitlyNoiseWarningMetricsUnavailable", "BaitlyNoiseWarningUncertain", "BaitlyNoiseWarningRepairStalled",
+    "BaitlyNoiseWarningMetricsUnavailable", "BaitlyNoiseWarningUncertain", "BaitlyNoiseWarningRepairStalled", "BaitlyNoiseWarningExpiredBeforeAttempt",
     "BaitlyAutomationMetricsUnavailable", "BaitlyAutomationStalled", "BaitlyAutomationUncertain", "BaitlyAutomationReviewRequired",
     "BaitlyExternalEffectMetricsUnavailable", "BaitlyLockEffectUncertain", "BaitlyReportEffectUncertain", "BaitlyReportEffectPartial",
 }
@@ -37,14 +37,10 @@ RECOVERY_COVERAGE = (
     + "|".join(RECOVERY_REQUIRED) + ')"}) == ' + str(len(RECOVERY_REQUIRED)) + ')) or vector(0)'
 )
 
-NOISE_METRICS = ("uncertain", "oldest_uncertain_seconds", "repair_pending")
-NOISE_REQUIRED = ("snapshot_healthy", "snapshot_last_success_timestamp_seconds", *NOISE_METRICS)
-NOISE_COVERAGE = (
-    'count((up{job="clenzy-backend"} == 1) unless on(job,instance) '
-    '(count by(job,instance) ({job="clenzy-backend",__name__=~"baitly_noise_warning_('
-    + "|".join(NOISE_REQUIRED) + ')"}) == ' + str(len(NOISE_REQUIRED)) + ')) or vector(0)'
-)
-
+NOISE_METRICS = ('uncertain', 'oldest_uncertain_seconds', 'repair_pending', 'expired_unattempted', 'expired_unattempted_recent')
+NOISE_REQUIRED = (*NOISE_METRICS, "snapshot_healthy", "snapshot_last_success_timestamp_seconds")
+NOISE_VALID = '(count by(job,instance) (({job="clenzy-backend",__name__=~"baitly_noise_warning_(uncertain|oldest_uncertain_seconds|repair_pending|expired_unattempted|expired_unattempted_recent|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} >= 0) and on(__name__,job,instance) ({job="clenzy-backend",__name__=~"baitly_noise_warning_(uncertain|oldest_uncertain_seconds|repair_pending|expired_unattempted|expired_unattempted_recent|snapshot_healthy|snapshot_last_success_timestamp_seconds)"} < +Inf)) == 7)\nand on(job,instance) (baitly_noise_warning_snapshot_healthy{job="clenzy-backend"} == 1)\nand on(job,instance) (time() - baitly_noise_warning_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} <= 180)\nand on(job,instance) (time() - baitly_noise_warning_snapshot_last_success_timestamp_seconds{job="clenzy-backend"} >= -60)\nand on(job,instance) (baitly_noise_warning_expired_unattempted_recent{job="clenzy-backend"} <= baitly_noise_warning_expired_unattempted{job="clenzy-backend"})\nand on(job,instance) (up{job="clenzy-backend"} == 1)'
+NOISE_COVERAGE = 'count((up{job="clenzy-backend"} == 1) unless on(job,instance) (' + NOISE_VALID + ')) or vector(0)'
 
 AUTOMATION_METRICS = ('ready', 'oldest_ready_seconds', 'uncertain', 'oldest_uncertain_seconds', 'expired', 'review', 'legacy_review')
 AUTOMATION_REQUIRED = (*AUTOMATION_METRICS, "snapshot_healthy", "snapshot_last_success_timestamp_seconds")

@@ -31,6 +31,14 @@
         {
           "series": "baitly_noise_warning_repair_pending{job=\"clenzy-backend\",instance=\"backend:8080\"}",
           "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted_recent{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
         }
       ],
       "alert_rule_test": [
@@ -77,6 +85,14 @@
         },
         {
           "series": "baitly_noise_warning_repair_pending{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted_recent{job=\"clenzy-backend\",instance=\"backend:8080\"}",
           "values": "0x40"
         }
       ],
@@ -137,6 +153,14 @@
         {
           "series": "baitly_noise_warning_repair_pending{job=\"clenzy-backend\",instance=\"backend:8080\"}",
           "values": "1x20 0x19"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted_recent{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
         }
       ],
       "alert_rule_test": [
@@ -196,6 +220,14 @@
         {
           "series": "baitly_noise_warning_repair_pending{job=\"clenzy-backend\",instance=\"backend:8080\"}",
           "values": "1x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted_recent{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
         }
       ],
       "alert_rule_test": [
@@ -255,6 +287,14 @@
         {
           "series": "baitly_noise_warning_repair_pending{job=\"clenzy-backend\",instance=\"backend:8080\"}",
           "values": "1x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted_recent{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
         }
       ],
       "alert_rule_test": [
@@ -315,6 +355,14 @@
         {
           "series": "baitly_noise_warning_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
           "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted_recent{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
         }
       ],
       "alert_rule_test": [
@@ -364,6 +412,14 @@
         {
           "series": "baitly_noise_warning_repair_pending{job=\"clenzy-backend\",instance=\"backend:8080\"}",
           "values": "1x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted_recent{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
         }
       ],
       "alert_rule_test": [
@@ -431,6 +487,22 @@
         {
           "series": "baitly_noise_warning_repair_pending{job=\"clenzy-backend\",instance=\"b\"}",
           "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted{job=\"clenzy-backend\",instance=\"a\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted_recent{job=\"clenzy-backend\",instance=\"a\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted{job=\"clenzy-backend\",instance=\"b\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted_recent{job=\"clenzy-backend\",instance=\"b\"}",
+          "values": "0x40"
         }
       ],
       "alert_rule_test": [
@@ -454,7 +526,7 @@
       ],
       "promql_expr_test": [
         {
-          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) (count by(job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_noise_warning_(snapshot_healthy|snapshot_last_success_timestamp_seconds|uncertain|oldest_uncertain_seconds|repair_pending)\"}) == 5)) or vector(0)",
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_noise_warning_(uncertain|oldest_uncertain_seconds|repair_pending|expired_unattempted|expired_unattempted_recent|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_noise_warning_(uncertain|oldest_uncertain_seconds|repair_pending|expired_unattempted|expired_unattempted_recent|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 7)\nand on(job,instance) (baitly_noise_warning_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_noise_warning_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_noise_warning_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (baitly_noise_warning_expired_unattempted_recent{job=\"clenzy-backend\"} <= baitly_noise_warning_expired_unattempted{job=\"clenzy-backend\"})\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
           "eval_time": "3m",
           "exp_samples": [
             {
