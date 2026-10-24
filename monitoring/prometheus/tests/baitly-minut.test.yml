@@ -1,0 +1,317 @@
+rule_files:
+  - "../rules/baitly-recovery.yml"
+evaluation_interval: "1m"
+tests:
+  -
+    name: "historical review and empty Minut queues are not incidents"
+    interval: "1m"
+    input_series:
+      -
+        series: "up{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "1x20"
+      -
+        series: "baitly_recovery_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "1x20"
+      -
+        series: "baitly_recovery_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "0+60x20"
+      -
+        series: "baitly_recovery_minut_ready{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "0x20"
+      -
+        series: "baitly_recovery_minut_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "0x20"
+      -
+        series: "baitly_recovery_minut_review{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "999x20"
+      -
+        series: "baitly_recovery_minut_oldest_ready_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "0x20"
+      -
+        series: "baitly_recovery_minut_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "0x20"
+    alert_rule_test:
+      -
+        eval_time: "10m"
+        alertname: "BaitlyMinutRecoveryStalled"
+        exp_alerts: []
+      -
+        eval_time: "10m"
+        alertname: "BaitlyMinutRecoveryUncertain"
+        exp_alerts: []
+  -
+    name: "stalled READY requires duration and resolves after progress"
+    interval: "1m"
+    input_series:
+      -
+        series: "up{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "1x20"
+      -
+        series: "baitly_recovery_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "1x20"
+      -
+        series: "baitly_recovery_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "0+60x20"
+      -
+        series: "baitly_recovery_minut_ready{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "1x5 0x14"
+      -
+        series: "baitly_recovery_minut_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "0x20"
+      -
+        series: "baitly_recovery_minut_review{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "999x20"
+      -
+        series: "baitly_recovery_minut_oldest_ready_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "1000x5 0x14"
+      -
+        series: "baitly_recovery_minut_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "0x20"
+    alert_rule_test:
+      -
+        eval_time: "4m"
+        alertname: "BaitlyMinutRecoveryStalled"
+        exp_alerts: []
+      -
+        eval_time: "5m"
+        alertname: "BaitlyMinutRecoveryStalled"
+        exp_alerts:
+          -
+            exp_labels:
+              job: "clenzy-backend"
+              instance: "backend:8080"
+              severity: "warning"
+            exp_annotations:
+              summary: "Travail Minut en attente depuis trop longtemps"
+              description: "Une etape jamais tentee attend plus de quinze minutes. Examiner le worker et le journal sans rejouer une etape confirmee."
+      -
+        eval_time: "7m"
+        alertname: "BaitlyMinutRecoveryStalled"
+        exp_alerts: []
+  -
+    name: "old STARTED UNKNOWN requires sustained duration and resolves without rearm"
+    interval: "1m"
+    input_series:
+      -
+        series: "up{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "1x20"
+      -
+        series: "baitly_recovery_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "1x20"
+      -
+        series: "baitly_recovery_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "0+60x20"
+      -
+        series: "baitly_recovery_minut_ready{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "0x20"
+      -
+        series: "baitly_recovery_minut_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "1x5 0x14"
+      -
+        series: "baitly_recovery_minut_review{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "999x20"
+      -
+        series: "baitly_recovery_minut_oldest_ready_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "0x20"
+      -
+        series: "baitly_recovery_minut_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "600x5 0x14"
+    alert_rule_test:
+      -
+        eval_time: "4m"
+        alertname: "BaitlyMinutRecoveryUncertain"
+        exp_alerts: []
+      -
+        eval_time: "5m"
+        alertname: "BaitlyMinutRecoveryUncertain"
+        exp_alerts:
+          -
+            exp_labels:
+              job: "clenzy-backend"
+              instance: "backend:8080"
+              severity: "warning"
+            exp_annotations:
+              summary: "Resultat Minut a rapprocher"
+              description: "Une tentative reste non confirmee depuis plus de cinq minutes. Rapprocher sa preuve sans rearmement ni nouvel envoi automatique."
+      -
+        eval_time: "7m"
+        alertname: "BaitlyMinutRecoveryUncertain"
+        exp_alerts: []
+  -
+    name: "recent ordinary in flight work is not an incident"
+    interval: "1m"
+    input_series:
+      -
+        series: "up{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "1x20"
+      -
+        series: "baitly_recovery_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "1x20"
+      -
+        series: "baitly_recovery_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "0+60x20"
+      -
+        series: "baitly_recovery_minut_ready{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "0x20"
+      -
+        series: "baitly_recovery_minut_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "1x20"
+      -
+        series: "baitly_recovery_minut_review{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "999x20"
+      -
+        series: "baitly_recovery_minut_oldest_ready_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "0x20"
+      -
+        series: "baitly_recovery_minut_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "100x20"
+    alert_rule_test:
+      -
+        eval_time: "10m"
+        alertname: "BaitlyMinutRecoveryUncertain"
+        exp_alerts: []
+  -
+    name: "stale samples suppress misleading Minut outcome alerts"
+    interval: "1m"
+    input_series:
+      -
+        series: "up{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "1x20"
+      -
+        series: "baitly_recovery_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "1x20"
+      -
+        series: "baitly_recovery_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "0x20"
+      -
+        series: "baitly_recovery_minut_ready{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "2x20"
+      -
+        series: "baitly_recovery_minut_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "2x20"
+      -
+        series: "baitly_recovery_minut_review{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "999x20"
+      -
+        series: "baitly_recovery_minut_oldest_ready_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "1000x20"
+      -
+        series: "baitly_recovery_minut_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "1000x20"
+    alert_rule_test:
+      -
+        eval_time: "10m"
+        alertname: "BaitlyMinutRecoveryStalled"
+        exp_alerts: []
+      -
+        eval_time: "10m"
+        alertname: "BaitlyMinutRecoveryUncertain"
+        exp_alerts: []
+  -
+    name: "unhealthy collector suppress misleading Minut outcome alerts"
+    interval: "1m"
+    input_series:
+      -
+        series: "up{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "1x20"
+      -
+        series: "baitly_recovery_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "0x20"
+      -
+        series: "baitly_recovery_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "0+60x20"
+      -
+        series: "baitly_recovery_minut_ready{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "2x20"
+      -
+        series: "baitly_recovery_minut_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "2x20"
+      -
+        series: "baitly_recovery_minut_review{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "999x20"
+      -
+        series: "baitly_recovery_minut_oldest_ready_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "1000x20"
+      -
+        series: "baitly_recovery_minut_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "1000x20"
+    alert_rule_test:
+      -
+        eval_time: "10m"
+        alertname: "BaitlyMinutRecoveryStalled"
+        exp_alerts: []
+      -
+        eval_time: "10m"
+        alertname: "BaitlyMinutRecoveryUncertain"
+        exp_alerts: []
+  -
+    name: "backend outage suppress misleading Minut outcome alerts"
+    interval: "1m"
+    input_series:
+      -
+        series: "up{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "0x20"
+      -
+        series: "baitly_recovery_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "1x20"
+      -
+        series: "baitly_recovery_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "0+60x20"
+      -
+        series: "baitly_recovery_minut_ready{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "2x20"
+      -
+        series: "baitly_recovery_minut_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "2x20"
+      -
+        series: "baitly_recovery_minut_review{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "999x20"
+      -
+        series: "baitly_recovery_minut_oldest_ready_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "1000x20"
+      -
+        series: "baitly_recovery_minut_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "1000x20"
+    alert_rule_test:
+      -
+        eval_time: "10m"
+        alertname: "BaitlyMinutRecoveryStalled"
+        exp_alerts: []
+      -
+        eval_time: "10m"
+        alertname: "BaitlyMinutRecoveryUncertain"
+        exp_alerts: []
+  -
+    name: "missing heartbeat suppress misleading Minut outcome alerts"
+    interval: "1m"
+    input_series:
+      -
+        series: "up{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "1x20"
+      -
+        series: "baitly_recovery_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "1x20"
+      -
+        series: "baitly_recovery_minut_ready{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "2x20"
+      -
+        series: "baitly_recovery_minut_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "2x20"
+      -
+        series: "baitly_recovery_minut_review{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "999x20"
+      -
+        series: "baitly_recovery_minut_oldest_ready_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "1000x20"
+      -
+        series: "baitly_recovery_minut_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}"
+        values: "1000x20"
+    alert_rule_test:
+      -
+        eval_time: "10m"
+        alertname: "BaitlyMinutRecoveryStalled"
+        exp_alerts: []
+      -
+        eval_time: "10m"
+        alertname: "BaitlyMinutRecoveryUncertain"
+        exp_alerts: []
