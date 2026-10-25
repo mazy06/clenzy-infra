@@ -1,0 +1,541 @@
+{
+  "rule_files": [
+    "../rules/baitly-recovery.yml"
+  ],
+  "evaluation_interval": "1m",
+  "tests": [
+    {
+      "name": "healthy empty warnings are not incidents",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_noise_warning_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_noise_warning_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        },
+        {
+          "series": "baitly_noise_warning_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_repair_pending{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted_recent{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "20m",
+          "alertname": "BaitlyNoiseWarningMetricsUnavailable",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "20m",
+          "alertname": "BaitlyNoiseWarningUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "20m",
+          "alertname": "BaitlyNoiseWarningRepairStalled",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "uncertain intent fires and resolves without rearming",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_noise_warning_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_noise_warning_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        },
+        {
+          "series": "baitly_noise_warning_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x5 0x34"
+        },
+        {
+          "series": "baitly_noise_warning_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "600x5 0x34"
+        },
+        {
+          "series": "baitly_noise_warning_repair_pending{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted_recent{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "4m",
+          "alertname": "BaitlyNoiseWarningUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "5m",
+          "alertname": "BaitlyNoiseWarningUncertain",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "clenzy-backend",
+                "instance": "backend:8080",
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "Notification bruit a rapprocher",
+                "description": "Une tentative reste incertaine. Rapprocher sa preuve sans liberer l'intention ni envoyer sur un autre canal."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "7m",
+          "alertname": "BaitlyNoiseWarningUncertain",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "local proof backlog requires sustained time and resolves",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_noise_warning_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_noise_warning_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        },
+        {
+          "series": "baitly_noise_warning_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_repair_pending{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x20 0x19"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted_recent{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "14m",
+          "alertname": "BaitlyNoiseWarningRepairStalled",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "15m",
+          "alertname": "BaitlyNoiseWarningRepairStalled",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "clenzy-backend",
+                "instance": "backend:8080",
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "Suivi local des avertissements en attente",
+                "description": "La file de reparation reste non vide depuis quinze minutes. Verifier les marqueurs locaux, jamais renvoyer les messages acceptes."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "22m",
+          "alertname": "BaitlyNoiseWarningRepairStalled",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "unhealthy snapshot does not fire business alerts",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_noise_warning_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        },
+        {
+          "series": "baitly_noise_warning_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_noise_warning_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "600x40"
+        },
+        {
+          "series": "baitly_noise_warning_repair_pending{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted_recent{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "3m",
+          "alertname": "BaitlyNoiseWarningMetricsUnavailable",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "clenzy-backend",
+                "instance": "backend:8080",
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "Collecte des avertissements indisponible",
+                "description": "Verifier migration, version et collecte SQL. Un ancien compteur ne prouve pas l'absence de notification incertaine."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "20m",
+          "alertname": "BaitlyNoiseWarningUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "20m",
+          "alertname": "BaitlyNoiseWarningRepairStalled",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "stale snapshot does not fire business alerts",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_noise_warning_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_noise_warning_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_noise_warning_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "600x40"
+        },
+        {
+          "series": "baitly_noise_warning_repair_pending{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted_recent{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "6m",
+          "alertname": "BaitlyNoiseWarningMetricsUnavailable",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "7m",
+          "alertname": "BaitlyNoiseWarningMetricsUnavailable",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "clenzy-backend",
+                "instance": "backend:8080",
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "Collecte des avertissements indisponible",
+                "description": "Verifier migration, version et collecte SQL. Un ancien compteur ne prouve pas l'absence de notification incertaine."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "20m",
+          "alertname": "BaitlyNoiseWarningUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "20m",
+          "alertname": "BaitlyNoiseWarningRepairStalled",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "one missing gauge prevents false healthy status",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_noise_warning_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_noise_warning_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        },
+        {
+          "series": "baitly_noise_warning_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted_recent{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "3m",
+          "alertname": "BaitlyNoiseWarningMetricsUnavailable",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "clenzy-backend",
+                "instance": "backend:8080",
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "Collecte des avertissements indisponible",
+                "description": "Verifier migration, version et collecte SQL. Un ancien compteur ne prouve pas l'absence de notification incertaine."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "backend outage has no duplicate warning incidents",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        },
+        {
+          "series": "baitly_noise_warning_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_noise_warning_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "600x40"
+        },
+        {
+          "series": "baitly_noise_warning_repair_pending{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted_recent{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "20m",
+          "alertname": "BaitlyNoiseWarningMetricsUnavailable",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "20m",
+          "alertname": "BaitlyNoiseWarningUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "20m",
+          "alertname": "BaitlyNoiseWarningRepairStalled",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "updated replica cannot hide missing warning gauge on another replica",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"a\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_noise_warning_snapshot_healthy{job=\"clenzy-backend\",instance=\"a\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_noise_warning_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"a\"}",
+          "values": "0+60x40"
+        },
+        {
+          "series": "baitly_noise_warning_uncertain{job=\"clenzy-backend\",instance=\"a\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"a\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_repair_pending{job=\"clenzy-backend\",instance=\"a\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"b\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_noise_warning_snapshot_healthy{job=\"clenzy-backend\",instance=\"b\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_noise_warning_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"b\"}",
+          "values": "0+60x40"
+        },
+        {
+          "series": "baitly_noise_warning_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"b\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_repair_pending{job=\"clenzy-backend\",instance=\"b\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted{job=\"clenzy-backend\",instance=\"a\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted_recent{job=\"clenzy-backend\",instance=\"a\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted{job=\"clenzy-backend\",instance=\"b\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_noise_warning_expired_unattempted_recent{job=\"clenzy-backend\",instance=\"b\"}",
+          "values": "0x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "3m",
+          "alertname": "BaitlyNoiseWarningMetricsUnavailable",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "clenzy-backend",
+                "instance": "b",
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "Collecte des avertissements indisponible",
+                "description": "Verifier migration, version et collecte SQL. Un ancien compteur ne prouve pas l'absence de notification incertaine."
+              }
+            }
+          ]
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_noise_warning_(uncertain|oldest_uncertain_seconds|repair_pending|expired_unattempted|expired_unattempted_recent|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_noise_warning_(uncertain|oldest_uncertain_seconds|repair_pending|expired_unattempted|expired_unattempted_recent|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 7)\nand on(job,instance) (baitly_noise_warning_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_noise_warning_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_noise_warning_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (baitly_noise_warning_expired_unattempted_recent{job=\"clenzy-backend\"} <= baitly_noise_warning_expired_unattempted{job=\"clenzy-backend\"})\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "3m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

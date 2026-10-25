@@ -10,6 +10,10 @@ on:
         description: 'Expected deployed backend SHA (40 hexadecimal characters)'
         required: true
         type: string
+      frontend_sha:
+        description: 'Expected deployed frontend SHA (optional, 40 hexadecimal characters)'
+        required: false
+        type: string
       send_canary:
         description: 'Send synthetic firing/resolved in-app notifications to active platform staff (explicit authorization required)'
         required: true
@@ -35,13 +39,14 @@ jobs:
           INFRA_DIR_VALUE: ${{ vars.VPS_INFRA_DIR }}
           EXPECTED_INFRA_SHA: ${{ inputs.infra_sha }}
           EXPECTED_BACKEND_SHA: ${{ inputs.backend_sha }}
+          EXPECTED_FRONTEND_SHA: ${{ inputs.frontend_sha }}
           SEND_CANARY: ${{ inputs.send_canary }}
         with:
           host: ${{ secrets.VPS_HOST != '' && secrets.VPS_HOST || vars.VPS_HOST }}
           username: ${{ secrets.VPS_USER != '' && secrets.VPS_USER || vars.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT || 22 }}
-          envs: INFRA_DIR_VALUE,EXPECTED_INFRA_SHA,EXPECTED_BACKEND_SHA,SEND_CANARY
+          envs: INFRA_DIR_VALUE,EXPECTED_INFRA_SHA,EXPECTED_BACKEND_SHA,EXPECTED_FRONTEND_SHA,SEND_CANARY
           command_timeout: 10m
           script: |
             set -eu
@@ -53,6 +58,13 @@ jobs:
             [ "$(git rev-parse HEAD)" = "$EXPECTED_INFRA_SHA" ] || exit 1
             image=$(docker inspect --format '{{.Config.Image}}' clenzy-server-prod)
             [ "${image##*:}" = "$EXPECTED_BACKEND_SHA" ] || exit 1
+            if [ -n "$EXPECTED_FRONTEND_SHA" ]; then
+              case "$EXPECTED_FRONTEND_SHA" in *[!0-9a-f]*) exit 1;; esac
+              [ "${#EXPECTED_FRONTEND_SHA}" -eq 40 ] || exit 1
+              frontend_image=$(docker inspect --format '{{.Config.Image}}' clenzy-client-prod)
+              [ "${frontend_image##*:}" = "$EXPECTED_FRONTEND_SHA" ] || exit 1
+              echo 'Expected backend and frontend image versions verified'
+            fi
             if [ "$SEND_CANARY" = true ]; then
               python3 scripts/baitly-pilot-monitoring.py --canary
             else

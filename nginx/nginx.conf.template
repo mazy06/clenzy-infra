@@ -1,5 +1,6 @@
 worker_processes auto;
-error_log /var/log/nginx/error.log warn;
+# Native errors can embed complete requests; safe access logs retain HTTP failures.
+error_log /dev/null;
 pid /var/run/nginx.pid;
 
 events {
@@ -13,13 +14,7 @@ http {
     default_type application/octet-stream;
 
     server_tokens off;
-    # No query strings, credentials, cookies, referer or resource tokens in access logs.
-    log_format baitly_security escape=json
-        '{"timestamp":"$time_iso8601","host":"$host","method":"$request_method",'
-        '"path":"$baitly_log_path","status":$status,"upstream_status":"$upstream_status",'
-        '"request_time":$request_time,"client_ip":"$remote_addr",'
-        '"peer_ip":"$realip_remote_addr","cf_ray":"$http_cf_ray"}';
-    access_log /var/log/nginx/access.log baitly_security;
+    include /etc/nginx/baitly/proxy-logging.conf;
 
     # Docker embedded DNS for dynamic upstream name resolution.
     resolver 127.0.0.11 valid=10s ipv6=off;

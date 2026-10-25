@@ -1,7 +1,7 @@
 version: '3.8'
 
 # ===========================================
-# Clenzy - Docker Compose DÉVELOPPEMENT
+# Baitly - Docker Compose DÉVELOPPEMENT
 # ===========================================
 # Usage: docker compose -f docker-compose.dev.yml --env-file .env.dev up --build
 #
@@ -162,6 +162,7 @@ services:
     ports:
       - "9092:9092"
     environment:
+      KAFKA_LOG4J_OPTS: "-Dlog4j.configuration=file:/etc/kafka/baitly-log4j.properties"
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@clenzy-kafka:29093
@@ -177,6 +178,7 @@ services:
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
       CLUSTER_ID: L8inmb8SRBme50IWzQulpw
     volumes:
+      - ./monitoring/kafka/baitly-log4j.properties:/etc/kafka/baitly-log4j.properties:ro
       - kafka-data-dev:/var/lib/kafka/data
     healthcheck:
       test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
@@ -329,6 +331,12 @@ services:
       BAITLY_MAPS_SIGNING_SECRET: ${BAITLY_MAPS_SIGNING_SECRET:-}
       # Jasypt (chiffrement tokens Airbnb en base)
       JASYPT_ENCRYPTOR_PASSWORD: ${JASYPT_ENCRYPTOR_PASSWORD:-dev-jasypt-secret-key}
+      # Baitly BTF1: deploy every reader before switching authenticated writes on.
+      # Keep the historical key pinned during rotation; never downgrade to a CBC-only reader.
+      BAITLY_SECURITY_FIELDENCRYPTION_AUTHENTICATEDWRITES: ${BAITLY_FIELD_AUTHENTICATED_WRITES:-false}
+      BAITLY_SECURITY_FIELDENCRYPTION_KEYVERSION: ${BAITLY_FIELD_KEY_VERSION:-1}
+      BAITLY_SECURITY_FIELDENCRYPTION_PREVIOUSPASSWORDS: ${BAITLY_FIELD_PREVIOUS_PASSWORDS:-}
+      BAITLY_SECURITY_FIELDENCRYPTION_LEGACYPASSWORD: ${BAITLY_FIELD_LEGACY_PASSWORD:-}
       # JaCoCo — chemin vers le rapport monte en volume
       # Instrumentation de mesure RLS (plan REM-T-01) : recense les requetes qui
       # echapperaient a la Row-Level Security. Utile en dev pour reperer les chemins
@@ -450,7 +458,7 @@ services:
       - VITE_KEYCLOAK_URL=http://localhost:8086
       - VITE_KEYCLOAK_REALM=clenzy
       - VITE_KEYCLOAK_CLIENT_ID=clenzy-web
-      - VITE_APP_NAME=Clenzy
+      - VITE_APP_NAME=Baitly
       - VITE_APP_VERSION=1.0.0
       - VITE_STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}
     volumes:
@@ -472,7 +480,7 @@ services:
   # ==========================================
   # SITE MARKETING BAITLY (vitrine produit)
   # ==========================================
-  # Distinct de la landing page Clenzy historique (port 8080) : les deux
+  # Distinct de la landing page Baitly historique (port 8080) : les deux
   # coexistent, aucune n'ecrase l'autre.
   #
   # Reutilise le Dockerfile.dev ET le volume node_modules du pms-client : meme

@@ -1,0 +1,3274 @@
+{
+  "rule_files": [
+    "../rules/baitly-recovery.yml"
+  ],
+  "evaluation_interval": "1m",
+  "tests": [
+    {
+      "name": "healthy empty journal",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "10m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "lock STARTED stalls",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x10 0x30"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "600x10 0x30"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "6m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "6m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning",
+                "job": "clenzy-backend",
+                "instance": "backend:8080"
+              },
+              "exp_annotations": {
+                "summary": "Commande de serrure à rapprocher",
+                "description": "Une tentative reste incertaine depuis plus de cinq minutes. Conserver le blocage ; vérifier les preuves fournisseur et matérielles sans rejouer la commande."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "6m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "6m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "6m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "lock observed recovery",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x10 0x30"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "600x10 0x30"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "25m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "25m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "25m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "25m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "25m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "lock short in-flight operation stays quiet",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "299x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "10m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "report STARTED stalls",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x10 0x30"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "600x10 0x30"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "6m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "6m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "6m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning",
+                "job": "clenzy-backend",
+                "instance": "backend:8080"
+              },
+              "exp_annotations": {
+                "summary": "Transmission de rapport à rapprocher",
+                "description": "Une transmission reste incertaine depuis plus de cinq minutes. Conserver le journal et rapprocher les preuves sans renvoyer le rapport."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "6m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "6m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "report observed recovery",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x10 0x30"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "600x10 0x30"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "25m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "25m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "25m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "25m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "25m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "report short in-flight operation stays quiet",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "299x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "10m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "partial SMTP accepted but unfinished",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x10 0x30"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x10 0x30"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "4m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "4m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "4m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "4m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning",
+                "job": "clenzy-backend",
+                "instance": "backend:8080"
+              },
+              "exp_annotations": {
+                "summary": "Transmission de rapport partiellement confirmée",
+                "description": "Au moins un envoi accepté reste dans une tentative non terminée. Examiner les preuves ; ne renvoyer ni le lot ni les destinataires restants automatiquement."
+              }
+            }
+          ]
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "4m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "partial SMTP observed recovery",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x10 0x30"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x10 0x30"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "25m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "25m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "25m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "25m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "25m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "missing lock_uncertain",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning",
+                "job": "clenzy-backend",
+                "instance": "backend:8080"
+              },
+              "exp_annotations": {
+                "summary": "Collecte des effets externes indisponible",
+                "description": "Vérifier version, migration, horloge et collecte SQL. Un compteur ancien ou incomplet ne prouve pas une absence de blocage."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "10m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "missing lock_oldest_uncertain_seconds",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning",
+                "job": "clenzy-backend",
+                "instance": "backend:8080"
+              },
+              "exp_annotations": {
+                "summary": "Collecte des effets externes indisponible",
+                "description": "Vérifier version, migration, horloge et collecte SQL. Un compteur ancien ou incomplet ne prouve pas une absence de blocage."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "10m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "missing lock_unknown",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning",
+                "job": "clenzy-backend",
+                "instance": "backend:8080"
+              },
+              "exp_annotations": {
+                "summary": "Collecte des effets externes indisponible",
+                "description": "Vérifier version, migration, horloge et collecte SQL. Un compteur ancien ou incomplet ne prouve pas une absence de blocage."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "10m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "missing report_uncertain",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning",
+                "job": "clenzy-backend",
+                "instance": "backend:8080"
+              },
+              "exp_annotations": {
+                "summary": "Collecte des effets externes indisponible",
+                "description": "Vérifier version, migration, horloge et collecte SQL. Un compteur ancien ou incomplet ne prouve pas une absence de blocage."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "10m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "missing report_oldest_uncertain_seconds",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning",
+                "job": "clenzy-backend",
+                "instance": "backend:8080"
+              },
+              "exp_annotations": {
+                "summary": "Collecte des effets externes indisponible",
+                "description": "Vérifier version, migration, horloge et collecte SQL. Un compteur ancien ou incomplet ne prouve pas une absence de blocage."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "10m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "missing report_unknown",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning",
+                "job": "clenzy-backend",
+                "instance": "backend:8080"
+              },
+              "exp_annotations": {
+                "summary": "Collecte des effets externes indisponible",
+                "description": "Vérifier version, migration, horloge et collecte SQL. Un compteur ancien ou incomplet ne prouve pas une absence de blocage."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "10m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "missing report_partial",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning",
+                "job": "clenzy-backend",
+                "instance": "backend:8080"
+              },
+              "exp_annotations": {
+                "summary": "Collecte des effets externes indisponible",
+                "description": "Vérifier version, migration, horloge et collecte SQL. Un compteur ancien ou incomplet ne prouve pas une absence de blocage."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "10m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "missing snapshot_healthy",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning",
+                "job": "clenzy-backend",
+                "instance": "backend:8080"
+              },
+              "exp_annotations": {
+                "summary": "Collecte des effets externes indisponible",
+                "description": "Vérifier version, migration, horloge et collecte SQL. Un compteur ancien ou incomplet ne prouve pas une absence de blocage."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "10m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "missing snapshot_last_success_timestamp_seconds",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning",
+                "job": "clenzy-backend",
+                "instance": "backend:8080"
+              },
+              "exp_annotations": {
+                "summary": "Collecte des effets externes indisponible",
+                "description": "Vérifier version, migration, horloge et collecte SQL. Un compteur ancien ou incomplet ne prouve pas une absence de blocage."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "10m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "invalid lock_uncertain NaN",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning",
+                "job": "clenzy-backend",
+                "instance": "backend:8080"
+              },
+              "exp_annotations": {
+                "summary": "Collecte des effets externes indisponible",
+                "description": "Vérifier version, migration, horloge et collecte SQL. Un compteur ancien ou incomplet ne prouve pas une absence de blocage."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "10m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "invalid lock_uncertain +Inf",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "+Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning",
+                "job": "clenzy-backend",
+                "instance": "backend:8080"
+              },
+              "exp_annotations": {
+                "summary": "Collecte des effets externes indisponible",
+                "description": "Vérifier version, migration, horloge et collecte SQL. Un compteur ancien ou incomplet ne prouve pas une absence de blocage."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "10m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "invalid lock_uncertain -1",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "-1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning",
+                "job": "clenzy-backend",
+                "instance": "backend:8080"
+              },
+              "exp_annotations": {
+                "summary": "Collecte des effets externes indisponible",
+                "description": "Vérifier version, migration, horloge et collecte SQL. Un compteur ancien ou incomplet ne prouve pas une absence de blocage."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "10m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "invalid report_partial NaN",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning",
+                "job": "clenzy-backend",
+                "instance": "backend:8080"
+              },
+              "exp_annotations": {
+                "summary": "Collecte des effets externes indisponible",
+                "description": "Vérifier version, migration, horloge et collecte SQL. Un compteur ancien ou incomplet ne prouve pas une absence de blocage."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "10m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "invalid report_partial +Inf",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "+Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning",
+                "job": "clenzy-backend",
+                "instance": "backend:8080"
+              },
+              "exp_annotations": {
+                "summary": "Collecte des effets externes indisponible",
+                "description": "Vérifier version, migration, horloge et collecte SQL. Un compteur ancien ou incomplet ne prouve pas une absence de blocage."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "10m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "invalid report_partial -1",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "-1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning",
+                "job": "clenzy-backend",
+                "instance": "backend:8080"
+              },
+              "exp_annotations": {
+                "summary": "Collecte des effets externes indisponible",
+                "description": "Vérifier version, migration, horloge et collecte SQL. Un compteur ancien ou incomplet ne prouve pas une absence de blocage."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "10m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "invalid snapshot_healthy NaN",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning",
+                "job": "clenzy-backend",
+                "instance": "backend:8080"
+              },
+              "exp_annotations": {
+                "summary": "Collecte des effets externes indisponible",
+                "description": "Vérifier version, migration, horloge et collecte SQL. Un compteur ancien ou incomplet ne prouve pas une absence de blocage."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "10m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "invalid snapshot_healthy +Inf",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "+Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning",
+                "job": "clenzy-backend",
+                "instance": "backend:8080"
+              },
+              "exp_annotations": {
+                "summary": "Collecte des effets externes indisponible",
+                "description": "Vérifier version, migration, horloge et collecte SQL. Un compteur ancien ou incomplet ne prouve pas une absence de blocage."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "10m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "invalid snapshot_healthy -1",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "-1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning",
+                "job": "clenzy-backend",
+                "instance": "backend:8080"
+              },
+              "exp_annotations": {
+                "summary": "Collecte des effets externes indisponible",
+                "description": "Vérifier version, migration, horloge et collecte SQL. Un compteur ancien ou incomplet ne prouve pas une absence de blocage."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "10m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "invalid snapshot_last_success_timestamp_seconds NaN",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning",
+                "job": "clenzy-backend",
+                "instance": "backend:8080"
+              },
+              "exp_annotations": {
+                "summary": "Collecte des effets externes indisponible",
+                "description": "Vérifier version, migration, horloge et collecte SQL. Un compteur ancien ou incomplet ne prouve pas une absence de blocage."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "10m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "invalid snapshot_last_success_timestamp_seconds +Inf",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "+Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf +Inf"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning",
+                "job": "clenzy-backend",
+                "instance": "backend:8080"
+              },
+              "exp_annotations": {
+                "summary": "Collecte des effets externes indisponible",
+                "description": "Vérifier version, migration, horloge et collecte SQL. Un compteur ancien ou incomplet ne prouve pas une absence de blocage."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "10m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "invalid snapshot_last_success_timestamp_seconds -1",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "-1x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning",
+                "job": "clenzy-backend",
+                "instance": "backend:8080"
+              },
+              "exp_annotations": {
+                "summary": "Collecte des effets externes indisponible",
+                "description": "Vérifier version, migration, horloge et collecte SQL. Un compteur ancien ou incomplet ne prouve pas une absence de blocage."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "10m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "failed collector retains old incident but suppresses domain rules",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "600x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning",
+                "job": "clenzy-backend",
+                "instance": "backend:8080"
+              },
+              "exp_annotations": {
+                "summary": "Collecte des effets externes indisponible",
+                "description": "Vérifier version, migration, horloge et collecte SQL. Un compteur ancien ou incomplet ne prouve pas une absence de blocage."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "10m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "stale collector",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning",
+                "job": "clenzy-backend",
+                "instance": "backend:8080"
+              },
+              "exp_annotations": {
+                "summary": "Collecte des effets externes indisponible",
+                "description": "Vérifier version, migration, horloge et collecte SQL. Un compteur ancien ou incomplet ne prouve pas une absence de blocage."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "10m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "future collector timestamp",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "10000x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning",
+                "job": "clenzy-backend",
+                "instance": "backend:8080"
+              },
+              "exp_annotations": {
+                "summary": "Collecte des effets externes indisponible",
+                "description": "Vérifier version, migration, horloge et collecte SQL. Un compteur ancien ou incomplet ne prouve pas une absence de blocage."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "10m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "dead backend suppresses dependent alerts",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "10m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "every replica must be complete",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        },
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend2:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend2:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend2:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend2:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend2:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend2:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend2:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend2:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend2:8080\"}",
+          "values": "0+60x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning",
+                "job": "clenzy-backend",
+                "instance": "backend2:8080"
+              },
+              "exp_annotations": {
+                "summary": "Collecte des effets externes indisponible",
+                "description": "Vérifier version, migration, horloge et collecte SQL. Un compteur ancien ou incomplet ne prouve pas une absence de blocage."
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "10m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "second healthy replica does not double aggregate",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "2x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend:8080\"}",
+          "values": "0+60x40"
+        },
+        {
+          "series": "up{job=\"clenzy-backend\",instance=\"backend2:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_uncertain{job=\"clenzy-backend\",instance=\"backend2:8080\"}",
+          "values": "2x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend2:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_lock_unknown{job=\"clenzy-backend\",instance=\"backend2:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_uncertain{job=\"clenzy-backend\",instance=\"backend2:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_oldest_uncertain_seconds{job=\"clenzy-backend\",instance=\"backend2:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_unknown{job=\"clenzy-backend\",instance=\"backend2:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_report_partial{job=\"clenzy-backend\",instance=\"backend2:8080\"}",
+          "values": "0x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\",instance=\"backend2:8080\"}",
+          "values": "1x40"
+        },
+        {
+          "series": "baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\",instance=\"backend2:8080\"}",
+          "values": "0+60x40"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyExternalEffectMetricsUnavailable",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyLockEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectUncertain",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "BaitlyReportEffectPartial",
+          "exp_alerts": []
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "count((up{job=\"clenzy-backend\"} == 1) unless on(job,instance) ((count by(job,instance) (({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} >= 0) and on(__name__,job,instance) ({job=\"clenzy-backend\",__name__=~\"baitly_external_effect_(lock_uncertain|lock_oldest_uncertain_seconds|lock_unknown|report_uncertain|report_oldest_uncertain_seconds|report_unknown|report_partial|snapshot_healthy|snapshot_last_success_timestamp_seconds)\"} < +Inf)) == 9)\nand on(job,instance) (baitly_external_effect_snapshot_healthy{job=\"clenzy-backend\"} == 1)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} <= 180)\nand on(job,instance) (time() - baitly_external_effect_snapshot_last_success_timestamp_seconds{job=\"clenzy-backend\"} >= -60)\nand on(job,instance) (up{job=\"clenzy-backend\"} == 1))) or vector(0)",
+          "eval_time": "10m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "expr": "max(baitly_external_effect_lock_uncertain{job=\"clenzy-backend\"})",
+          "eval_time": "10m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 2
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
