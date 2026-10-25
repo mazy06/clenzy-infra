@@ -248,6 +248,12 @@ services:
       SPRING_KAFKA_BOOTSTRAP_SERVERS: clenzy-kafka:9092
       # Jasypt
       JASYPT_ENCRYPTOR_PASSWORD: ${JASYPT_ENCRYPTOR_PASSWORD}
+      # Baitly BTF1: deploy every reader before switching authenticated writes on.
+      # Keep the historical key pinned during rotation; never downgrade to a CBC-only reader.
+      BAITLY_SECURITY_FIELDENCRYPTION_AUTHENTICATEDWRITES: ${BAITLY_FIELD_AUTHENTICATED_WRITES:-false}
+      BAITLY_SECURITY_FIELDENCRYPTION_KEYVERSION: ${BAITLY_FIELD_KEY_VERSION:-1}
+      BAITLY_SECURITY_FIELDENCRYPTION_PREVIOUSPASSWORDS: ${BAITLY_FIELD_PREVIOUS_PASSWORDS:-}
+      BAITLY_SECURITY_FIELDENCRYPTION_LEGACYPASSWORD: ${BAITLY_FIELD_LEGACY_PASSWORD:-}
       # Mail SMTP (envoi via Brevo)
       MAIL_HOST: ${MAIL_HOST:-smtp-relay.brevo.com}
       MAIL_PORT: ${MAIL_PORT:-587}

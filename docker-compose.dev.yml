@@ -331,6 +331,12 @@ services:
       BAITLY_MAPS_SIGNING_SECRET: ${BAITLY_MAPS_SIGNING_SECRET:-}
       # Jasypt (chiffrement tokens Airbnb en base)
       JASYPT_ENCRYPTOR_PASSWORD: ${JASYPT_ENCRYPTOR_PASSWORD:-dev-jasypt-secret-key}
+      # Baitly BTF1: deploy every reader before switching authenticated writes on.
+      # Keep the historical key pinned during rotation; never downgrade to a CBC-only reader.
+      BAITLY_SECURITY_FIELDENCRYPTION_AUTHENTICATEDWRITES: ${BAITLY_FIELD_AUTHENTICATED_WRITES:-false}
+      BAITLY_SECURITY_FIELDENCRYPTION_KEYVERSION: ${BAITLY_FIELD_KEY_VERSION:-1}
+      BAITLY_SECURITY_FIELDENCRYPTION_PREVIOUSPASSWORDS: ${BAITLY_FIELD_PREVIOUS_PASSWORDS:-}
+      BAITLY_SECURITY_FIELDENCRYPTION_LEGACYPASSWORD: ${BAITLY_FIELD_LEGACY_PASSWORD:-}
       # JaCoCo — chemin vers le rapport monte en volume
       # Instrumentation de mesure RLS (plan REM-T-01) : recense les requetes qui
       # echapperaient a la Row-Level Security. Utile en dev pour reperer les chemins
