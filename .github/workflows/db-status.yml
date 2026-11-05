@@ -343,8 +343,10 @@ jobs:
             #          n'est pas actif (voir plan REM-T-01) ;
             #   0362 : runAlways — rejoue a chaque boot pour accorder les privileges au
             #          role applicatif meme s'il est cree apres coup. Idempotent.
+            #   0588 : runAlways — revérifie PostGIS a chaque boot, pour activer la position
+            #          cartographique des que l'image Postgres le propose. Idempotent.
             # Toute AUTRE ligne en attente reste un ecart reel et fait echouer le job.
-            EXPECTED_PENDING='0345-enable-rls-priority-tables|0362-grant-privileges-to-app-role'
+            EXPECTED_PENDING='0345-enable-rls-priority-tables|0362-grant-privileges-to-app-role|0588-baitly-directory-postgis'
             UNEXPECTED=$(grep -oE 'db\.changelog-master\.yaml::[^:]+::' "$STATUS_OUT" \
                           | grep -vE "$EXPECTED_PENDING" | wc -l | tr -d '[:space:]')
             PENDING=${UNEXPECTED:-0}
