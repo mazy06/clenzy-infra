@@ -319,10 +319,18 @@ else
     $DC pull $SERVICES_LIST
     # Resoudre les dependances avant l'API, meme si Compose les aurait
     # demarrees implicitement. Ne pas les recreer une seconde fois apres la sonde.
-    $DC up -d $RECREATE_FLAG postgres
+    POSTGRES_RECREATE_FLAG=""
+    PGBOUNCER_RECREATE_FLAG=""
+    case " $SERVICES_LIST " in
+      *" postgres "*) POSTGRES_RECREATE_FLAG="$RECREATE_FLAG" ;;
+    esac
+    case " $SERVICES_LIST " in
+      *" pgbouncer "*) PGBOUNCER_RECREATE_FLAG="$RECREATE_FLAG" ;;
+    esac
+    $DC up -d $POSTGRES_RECREATE_FLAG postgres
     wait_pg "deploiement cible"
     $DC up -d --force-recreate db-app-role
-    $DC up -d $RECREATE_FLAG pgbouncer
+    $DC up -d $PGBOUNCER_RECREATE_FLAG pgbouncer
     wait_sql
     APP_SERVICES=""
     for SVC in $SERVICES_LIST; do
