@@ -268,6 +268,28 @@ class DeploymentSqlReadinessTest(unittest.TestCase):
                 if force:
                     self.assertIn('--force-recreate', commands[start])
 
+    def test_frontend_force_recreate_does_not_recreate_untargeted_sql_dependencies(self):
+        for force in (False, True):
+            with self.subTest(force=force):
+                result, commands = self.deploy(services='pms-client', force=force)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                frontend_starts = [i for i, args in enumerate(commands)
+                                   if 'up' in args and 'pms-client' in args]
+                self.assertEqual(len(frontend_starts), 1)
+                start = frontend_starts[0]
+                self.assertEqual('--force-recreate' in commands[start], force)
+                dependency_starts = []
+                for service in ('postgres', 'pgbouncer'):
+                    starts = [i for i, args in enumerate(commands[:start])
+                              if 'up' in args and service in args]
+                    self.assertTrue(starts, f'{service} doit toujours etre demarre')
+                    for index in starts:
+                        self.assertNotIn(
+                            '--force-recreate', commands[index],
+                            f'{service} ne fait pas partie des services cibles du frontend')
+                    dependency_starts.extend(starts)
+                self.assert_probe(commands, max(dependency_starts), start)
+
     def test_crash_loop_recovery_rechecks_sql_before_continuing(self):
         for service in ('pgbouncer', 'pms-server', 'keycloak'):
             with self.subTest(service=service):
