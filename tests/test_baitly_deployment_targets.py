@@ -348,7 +348,8 @@ class DeploymentSqlDockerIntegrationTest(unittest.TestCase):
                 self.assertNotEqual(probe('wrong-test-password').returncode, 0)
                 self.assertEqual(compose('stop', 'pgbouncer').returncode, 0)
                 self.assertNotEqual(probe('test-app-secret').returncode, 0)
-                self.assertEqual(compose('start', '--wait', 'pgbouncer').returncode, 0)
+                restarted = compose('up', '-d', '--wait', '--wait-timeout', '60', 'pgbouncer')
+                self.assertEqual(restarted.returncode, 0, restarted.stderr)
                 self.assertEqual(probe('test-app-secret').stdout.strip(), '1')
             finally:
                 cleaned = compose('down', '--volumes', '--remove-orphans')
