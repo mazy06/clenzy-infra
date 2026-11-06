@@ -251,6 +251,33 @@ wait_pg() {
   echo "   ✅ PostgreSQL pret."
 }
 
+wait_sql() {
+  local network result attempt
+  # PostgreSQL et l'API partagent l'unique reseau Compose, y compris lorsque
+  # l'API n'existe pas encore (full-rebuild). Refuser une topologie ambigue.
+  network=$(docker inspect "$($DC ps -q postgres)" | jq -er \
+    '.[0].NetworkSettings.Networks | keys | if length == 1 then .[0] else error("reseau SQL ambigu") end') || {
+    echo "❌ Impossible de determiner le reseau SQL de l'API."
+    exit 1
+  }
+  for ((attempt=1; attempt<=30; attempt++)); do
+    # Meme image cliente que PostgreSQL ; aucun outil requis dans l'image API.
+    # Identifiants alignes sur SPRING_DATASOURCE_* du Compose, sans logs psql.
+    if result=$(PGPASSWORD="${CLENZY_APP_DB_USER_PASSWORD:-${POSTGRES_PASSWORD}}" \
+      docker run --rm --network "$network" -e PGPASSWORD -e PGCONNECT_TIMEOUT=3 \
+      -e 'PGOPTIONS=-c statement_timeout=3000' \
+      pgvector/pgvector:pg15 psql -X -h pgbouncer -p 6432 \
+      -U "${CLENZY_APP_DB_USER:-${POSTGRES_USER}}" -d "${POSTGRES_DB}" \
+      -v ON_ERROR_STOP=1 -tAc "SELECT 1" 2>/dev/null) && [ "$result" = "1" ]; then
+      echo "   ✅ Trajet SQL via PgBouncer pret."
+      return 0
+    fi
+    if [ "$attempt" -lt 30 ]; then sleep 2; fi
+  done
+  echo "❌ Trajet SQL via PgBouncer indisponible apres 30 tentatives."
+  exit 1
+}
+
 wait_kafka() {
   local label="$1"
   local attempt=0
@@ -280,6 +307,9 @@ if [ "$DEPLOY_MODE" = "full-rebuild" ]; then
   echo "   Phase 1b — Demarrage Kafka..."
   $DC up -d kafka
   wait_kafka "apres rebuild"
+  $DC up -d --force-recreate db-app-role
+  $DC up -d pgbouncer
+  wait_sql
   echo "   Phase 2 — Demarrage de tous les services..."
   $DC up -d
   HEALTH_SERVICES="nginx pms-server pms-client landing postgres redis keycloak kafka"
@@ -287,7 +317,31 @@ else
   if [ -n "$SERVICES_LIST" ]; then
     echo "📦 Mise a jour des services : $SERVICES_LIST"
     $DC pull $SERVICES_LIST
-    $DC up -d $RECREATE_FLAG $SERVICES_LIST
+    # Resoudre les dependances avant l'API, meme si Compose les aurait
+    # demarrees implicitement. Ne pas les recreer une seconde fois apres la sonde.
+    POSTGRES_RECREATE_FLAG=""
+    PGBOUNCER_RECREATE_FLAG=""
+    case " $SERVICES_LIST " in
+      *" postgres "*) POSTGRES_RECREATE_FLAG="$RECREATE_FLAG" ;;
+    esac
+    case " $SERVICES_LIST " in
+      *" pgbouncer "*) PGBOUNCER_RECREATE_FLAG="$RECREATE_FLAG" ;;
+    esac
+    $DC up -d $POSTGRES_RECREATE_FLAG postgres
+    wait_pg "deploiement cible"
+    $DC up -d --force-recreate db-app-role
+    $DC up -d $PGBOUNCER_RECREATE_FLAG pgbouncer
+    wait_sql
+    APP_SERVICES=""
+    for SVC in $SERVICES_LIST; do
+      case "$SVC" in
+        postgres|pgbouncer|db-app-role) ;;
+        *) APP_SERVICES="$APP_SERVICES $SVC" ;;
+      esac
+    done
+    if [ -n "$APP_SERVICES" ]; then
+      $DC up -d $RECREATE_FLAG $APP_SERVICES
+    fi
     HEALTH_SERVICES="$SERVICES_LIST"
   else
     echo "📦 Mise a jour de tous les services..."
@@ -318,6 +372,7 @@ else
     # (indispensable depuis le cablage scram-sha-256, audit perf 2026-07-21).
     echo "   Phase 1b — Recreation pgBouncer..."
     $DC up -d --force-recreate pgbouncer
+    wait_sql
     echo "   Phase 1c — Demarrage Kafka..."
     $DC up -d kafka
     wait_kafka "apres mise a jour"
@@ -349,6 +404,7 @@ for SVC in keycloak pms-server pgbouncer; do
     $DC rm -f "$SVC" 2>/dev/null || true
     sleep 3
     $DC up -d "$SVC"
+    wait_sql
     CRASH_LOOP_FIXED=1
   fi
 done
