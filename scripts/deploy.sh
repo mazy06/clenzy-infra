@@ -252,14 +252,17 @@ wait_pg() {
 }
 
 wait_sql() {
-  local network result attempt
+  local postgres_id network result attempt
   # PostgreSQL et l'API partagent l'unique reseau Compose, y compris lorsque
   # l'API n'existe pas encore (full-rebuild). Refuser une topologie ambigue.
-  network=$(docker inspect "$($DC ps -q postgres)" | jq -er \
-    '.[0].NetworkSettings.Networks | keys | if length == 1 then .[0] else error("reseau SQL ambigu") end') || {
+  if ! postgres_id=$($DC ps -q postgres) ||
+     [ -z "$postgres_id" ] ||
+     ! network=$(docker inspect --type container \
+       --format '{{range $name, $_ := .NetworkSettings.Networks}}{{println $name}}{{end}}' "$postgres_id") ||
+     [[ -z "$network" || "$network" == *$'\n'* ]]; then
     echo "❌ Impossible de determiner le reseau SQL de l'API."
     exit 1
-  }
+  fi
   for ((attempt=1; attempt<=30; attempt++)); do
     # Meme image cliente que PostgreSQL ; aucun outil requis dans l'image API.
     # Identifiants alignes sur SPRING_DATASOURCE_* du Compose, sans logs psql.
