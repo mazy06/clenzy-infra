@@ -1,6 +1,6 @@
 #!/bin/bash
 # ===========================================
-# Clenzy - Script de backup automatique
+# Baitly - Script de backup automatique
 # ===========================================
 # Sauvegarde : PostgreSQL + Keycloak Realm + Redis
 #
@@ -9,8 +9,8 @@
 #   ./backup.sh --env prod      → backup production
 #   ./backup.sh --db-only       → backup PostgreSQL uniquement
 #
-# Cron recommandé (prod) :
-#   0 2 * * * /opt/clenzy/backup/backup.sh --env prod >> /var/log/clenzy-backup.log 2>&1
+# Pilote France : objectif RPO 1h / RTO 4h. Aucune planification n'est installee ici.
+# La cadence doit couvrir aussi chiffrement et copie hors site, avant qualification.
 #
 # Rétention :
 #   - Quotidien : 7 jours
@@ -18,6 +18,7 @@
 #   - Mensuel : 6 mois (1er du mois)
 
 set -euo pipefail
+umask 077
 
 # ---- Configuration ----
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -27,9 +28,6 @@ INFRA_DIR="$(dirname "$SCRIPT_DIR")"
 ENV="dev"
 DB_ONLY=false
 BACKUP_ROOT="${BACKUP_ROOT:-$SCRIPT_DIR/data}"
-RETENTION_DAILY=7
-RETENTION_WEEKLY=28
-RETENTION_MONTHLY=180
 
 # ---- Parsing des arguments ----
 while [[ $# -gt 0 ]]; do
@@ -42,29 +40,27 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+case "$BACKUP_ROOT" in /*) ;; *) BACKUP_ROOT="$PWD/$BACKUP_ROOT" ;; esac
+
 # ---- Variables dérivées ----
 DATE=$(date +%Y%m%d_%H%M%S)
-DAY_OF_WEEK=$(date +%u)   # 1=lundi, 7=dimanche
-DAY_OF_MONTH=$(date +%d)
+SNAPSHOT_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 BACKUP_DIR="$BACKUP_ROOT/$ENV/$DATE"
 
 # Conteneurs selon l'environnement
 case $ENV in
     dev)
         PG_CONTAINER="clenzy-postgres-dev"
-        KC_CONTAINER="clenzy-keycloak-dev"
         REDIS_CONTAINER="clenzy-redis-dev"
         ENV_FILE="$INFRA_DIR/.env.dev"
         ;;
     staging)
         PG_CONTAINER="clenzy-postgres-staging"
-        KC_CONTAINER="clenzy-keycloak-staging"
         REDIS_CONTAINER="clenzy-redis-staging"
         ENV_FILE="$INFRA_DIR/.env.staging"
         ;;
     prod)
         PG_CONTAINER="clenzy-postgres-prod"
-        KC_CONTAINER="clenzy-keycloak-prod"
         REDIS_CONTAINER="clenzy-redis-prod"
         ENV_FILE="$INFRA_DIR/.env"
         ;;
@@ -95,8 +91,20 @@ check_container() {
 }
 
 # ---- Début du backup ----
-log "🚀 Démarrage backup Clenzy [$ENV] → $BACKUP_DIR"
-mkdir -p "$BACKUP_DIR"
+log "🚀 Démarrage backup Baitly [$ENV] → $BACKUP_DIR"
+mkdir -p "$BACKUP_ROOT/$ENV"
+chmod 700 "$BACKUP_ROOT/$ENV"
+for previous in "$BACKUP_ROOT/$ENV"/clenzy_backup_${ENV}_*.tar.gz; do
+    if [ -f "$previous" ] && [ ! -L "$previous" ]; then chmod 600 "$previous"; fi
+done
+# A same-second invocation must not overwrite an earlier snapshot.
+mkdir "$BACKUP_DIR"
+ARCHIVE_PARTIAL=""
+cleanup() {
+    rm -rf "$BACKUP_DIR"
+    if [ -n "$ARCHIVE_PARTIAL" ]; then rm -f "$ARCHIVE_PARTIAL"; fi
+}
+trap cleanup EXIT
 
 ERRORS=0
 
@@ -105,74 +113,38 @@ ERRORS=0
 # ==========================================
 log "📦 [1/3] Backup PostgreSQL..."
 if check_container "$PG_CONTAINER"; then
-    PG_BACKUP_FILE="$BACKUP_DIR/postgres_${POSTGRES_DB:-clenzy}_$DATE.sql.gz"
-
-    docker exec "$PG_CONTAINER" pg_dump \
-        -U "${POSTGRES_USER:-clenzy}" \
-        -d "${POSTGRES_DB:-clenzy_dev}" \
-        --format=custom \
-        --compress=9 \
-        --verbose \
-        2>"$BACKUP_DIR/postgres_dump.log" \
-        > "$BACKUP_DIR/postgres_${POSTGRES_DB:-clenzy}_$DATE.dump"
-
-    if [ $? -eq 0 ]; then
-        DUMP_SIZE=$(du -h "$BACKUP_DIR/postgres_${POSTGRES_DB:-clenzy}_$DATE.dump" | cut -f1)
-        log "✅ PostgreSQL backup OK ($DUMP_SIZE)"
-    else
-        log "❌ PostgreSQL backup ÉCHOUÉ"
-        ERRORS=$((ERRORS + 1))
+    PG_DUMP_FILE="$BACKUP_DIR/postgres_application_$DATE.dump"
+    if ! docker exec "$PG_CONTAINER" pg_dump -U "${POSTGRES_USER:-clenzy}" \
+        -d "${POSTGRES_DB:-clenzy_dev}" --format=custom --compress=9 \
+        >"$PG_DUMP_FILE" 2>"$BACKUP_DIR/postgres_dump.log"; then
+        log "PostgreSQL backup échoué ; aucune archive complète ne sera publiée"
+        exit 1
     fi
+    test -s "$PG_DUMP_FILE"
+    docker exec -i "$PG_CONTAINER" pg_restore --list <"$PG_DUMP_FILE" >/dev/null 2>>"$BACKUP_DIR/postgres_dump.log"
+    log "PostgreSQL dump vérifié"
 
-    # Backup de la base Keycloak aussi
-    if [ "$ENV" != "dev" ] || [ "$DB_ONLY" = false ]; then
-        KC_DB="keycloak_${ENV}"
-        docker exec "$PG_CONTAINER" pg_dump \
-            -U "${POSTGRES_USER:-clenzy}" \
-            -d "$KC_DB" \
-            --format=custom \
-            --compress=9 \
-            2>>"$BACKUP_DIR/postgres_dump.log" \
-            > "$BACKUP_DIR/keycloak_db_$DATE.dump" 2>/dev/null || true
-        log "📋 Keycloak DB dump tenté ($KC_DB)"
+    # The complete authentication DB covers both PMS and guest realms, users and keys.
+    KC_DB="${KEYCLOAK_DB_NAME:-keycloak_${ENV}}"
+    if ! docker exec "$PG_CONTAINER" pg_dump -U "${POSTGRES_USER:-clenzy}" \
+        -d "$KC_DB" --format=custom --compress=9 \
+        >"$BACKUP_DIR/keycloak_db_$DATE.dump" 2>>"$BACKUP_DIR/postgres_dump.log"; then
+        log "Base authentification non sauvegardée ; aucune archive complète ne sera publiée"
+        exit 1
     fi
+    test -s "$BACKUP_DIR/keycloak_db_$DATE.dump"
+    docker exec -i "$PG_CONTAINER" pg_restore --list <"$BACKUP_DIR/keycloak_db_$DATE.dump" >/dev/null 2>>"$BACKUP_DIR/postgres_dump.log"
+    log "Base authentification vérifiée"
 else
-    ERRORS=$((ERRORS + 1))
+    exit 1
 fi
 
 # ==========================================
-# 2. BACKUP KEYCLOAK REALM EXPORT
+# 2. AUTHENTIFICATION
 # ==========================================
-if [ "$DB_ONLY" = false ]; then
-    log "📦 [2/3] Export Keycloak Realm..."
-    if check_container "$KC_CONTAINER"; then
-        KC_EXPORT_FILE="$BACKUP_DIR/keycloak_realm_clenzy_$DATE.json"
-
-        # Export du realm via l'API admin de Keycloak
-        # D'abord obtenir un token admin
-        KC_TOKEN=$(docker exec "$KC_CONTAINER" /opt/keycloak/bin/kcadm.sh config credentials \
-            --server http://localhost:8080 \
-            --realm master \
-            --user "${KEYCLOAK_ADMIN:-admin}" \
-            --password "${KEYCLOAK_ADMIN_PASSWORD:-admin}" 2>/dev/null && \
-            docker exec "$KC_CONTAINER" /opt/keycloak/bin/kcadm.sh get realms/clenzy \
-            2>/dev/null) || true
-
-        if [ -n "$KC_TOKEN" ]; then
-            echo "$KC_TOKEN" > "$KC_EXPORT_FILE"
-            log "✅ Keycloak realm export OK"
-        else
-            # Fallback : copier le fichier realm-import si disponible
-            docker cp "$KC_CONTAINER:/opt/keycloak/data/import/realm-clenzy.json" \
-                "$BACKUP_DIR/keycloak_realm_import_$DATE.json" 2>/dev/null || true
-            log "⚠️  Keycloak realm export via kcadm échoué, fallback sur fichier import"
-        fi
-    else
-        log "⚠️  Keycloak container non disponible, skip export"
-    fi
-else
-    log "⏭️  [2/3] Keycloak skip (--db-only)"
-fi
+# No kcadm login/export: it persists admin credentials and realm metadata alone
+# does not restore users, guest realms or signing keys. The DB dump above is required.
+log "Authentification incluse dans le dump complet de sa base"
 
 # ==========================================
 # 3. BACKUP REDIS
@@ -205,10 +177,17 @@ fi
 # ==========================================
 # 4. COMPRESSION FINALE
 # ==========================================
+python3 "$SCRIPT_DIR/baitly_archive.py" create "$BACKUP_DIR" --environment "$ENV" --snapshot-started-at "$SNAPSHOT_STARTED_AT"
 log "🗜️  Compression de l'archive..."
 ARCHIVE_NAME="clenzy_backup_${ENV}_$DATE.tar.gz"
 cd "$BACKUP_ROOT/$ENV"
-tar -czf "$ARCHIVE_NAME" "$DATE/"
+ARCHIVE_PARTIAL=$(mktemp "$BACKUP_ROOT/$ENV/.baitly-archive.XXXXXX")
+COPYFILE_DISABLE=1 tar -czf "$ARCHIVE_PARTIAL" "$DATE/"
+python3 "$SCRIPT_DIR/baitly_archive.py" verify "$ARCHIVE_PARTIAL"
+# Hard link publishes atomically and refuses to replace an existing archive.
+ln "$ARCHIVE_PARTIAL" "$ARCHIVE_NAME"
+rm -f "$ARCHIVE_PARTIAL"
+ARCHIVE_PARTIAL=""
 ARCHIVE_SIZE=$(du -h "$ARCHIVE_NAME" | cut -f1)
 log "📁 Archive: $ARCHIVE_NAME ($ARCHIVE_SIZE)"
 
@@ -220,13 +199,9 @@ rm -rf "$DATE/"
 # ==========================================
 log "🧹 Nettoyage des anciens backups..."
 
-# Supprimer les backups quotidiens > RETENTION_DAILY jours
-find "$BACKUP_ROOT/$ENV" -name "clenzy_backup_${ENV}_*.tar.gz" -mtime +$RETENTION_DAILY -delete 2>/dev/null
-
-# Garder les backups du dimanche pendant RETENTION_WEEKLY jours
-# Garder les backups du 1er du mois pendant RETENTION_MONTHLY jours
-# (Les backups du dimanche et du 1er sont déjà inclus dans le quotidien,
-#  on ne supprime que ceux au-delà de la rétention quotidienne)
+# Classify each archive by its original snapshot date; monthly/weekly retention
+# must not be defeated by deleting every file older than seven days first.
+python3 "$SCRIPT_DIR/baitly_archive.py" retention "$BACKUP_ROOT/$ENV" --environment "$ENV" --apply
 
 REMAINING=$(ls -1 "$BACKUP_ROOT/$ENV"/clenzy_backup_${ENV}_*.tar.gz 2>/dev/null | wc -l)
 log "📊 Backups restants: $REMAINING"
@@ -237,7 +212,7 @@ log "📊 Backups restants: $REMAINING"
 echo ""
 log "========================================"
 if [ $ERRORS -eq 0 ]; then
-    log "✅ BACKUP TERMINÉ AVEC SUCCÈS [$ENV]"
+    log "Sauvegarde locale des bases vérifiée [$ENV] ; documents, chiffrement et copie hors site restent à qualifier"
 else
     log "⚠️  BACKUP TERMINÉ AVEC $ERRORS ERREUR(S) [$ENV]"
 fi

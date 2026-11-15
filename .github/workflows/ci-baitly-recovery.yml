@@ -1,0 +1,28 @@
+name: CI Baitly database recovery (synthetic only)
+on:
+  pull_request:
+    paths: ['backup/**', '.github/workflows/ci-baitly-recovery.yml']
+  push:
+    branches: [main]
+    paths: ['backup/**', '.github/workflows/ci-baitly-recovery.yml']
+permissions:
+  contents: read
+jobs:
+  recovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # Same PostgreSQL major and vector extension distribution as the current server.
+    # No production secret, environment or artifact containing business data.
+    container: pgvector/pgvector:pg15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install test runtime
+        run: apt-get update -qq && apt-get install -y --no-install-recommends python3
+      - name: Restore synthetic application and authentication dumps in a private temporary cluster
+        env:
+          BAITLY_PG_BINDIR: /usr/lib/postgresql/15/bin
+          BAITLY_EXPECT_VECTOR: '1'
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          bash -n backup/backup.sh backup/restore.sh
+          runuser -u postgres -- python3 -m unittest discover -s backup -p 'test_baitly_recovery.py' -v

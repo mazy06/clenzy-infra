@@ -40,3 +40,9 @@ Thumbs.db
 __pycache__/
 *.pyc
 baitly-cloudflare-before.json
+
+# Baitly database backups are private operational data, never source artifacts.
+/backup/data/
+/backup/*.dump
+/backup/*.rdb
+/backup/*.tar.gz
